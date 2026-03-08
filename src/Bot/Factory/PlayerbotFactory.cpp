@@ -982,9 +982,6 @@ void PlayerbotFactory::InitPet()
             bot->SetMinion(pet, true);
 
             pet->InitTalentForLevel();
-
-            pet->SavePetToDB(PET_SAVE_AS_CURRENT);
-            bot->PetSpellInitialize();
             break;
         }
     }
@@ -1019,6 +1016,10 @@ void PlayerbotFactory::InitPet()
         }
         pet->ToggleAutocast(spellInfo, true);
     }
+
+    // Save pet after autocast setup so newly learned pet spells are inserted only once
+    pet->SavePetToDB(PET_SAVE_AS_CURRENT);
+    bot->PetSpellInitialize();
 }
 
 void PlayerbotFactory::ClearSkills()
