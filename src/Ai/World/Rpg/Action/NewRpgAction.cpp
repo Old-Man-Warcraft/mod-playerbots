@@ -62,7 +62,7 @@ bool NewRpgStatusUpdateAction::Execute(Event /*event*/)
     {
         case RPG_IDLE:
             return RandomChangeStatus({RPG_GO_CAMP, RPG_GO_GRIND, RPG_WANDER_RANDOM, RPG_WANDER_NPC, RPG_DO_QUEST,
-                                       RPG_TRAVEL_FLIGHT, RPG_REST});
+                                       RPG_TRAVEL_FLIGHT, RPG_FARMING, RPG_REST});
 
         case RPG_GO_GRIND:
         {
@@ -130,6 +130,15 @@ bool NewRpgStatusUpdateAction::Execute(Event /*event*/)
             }
             break;
         }
+        case RPG_FARMING:
+        {
+            if (info.HasStatusPersisted(statusFarmingDuration))
+            {
+                info.ChangeToIdle();
+                return true;
+            }
+            break;
+        }
         case RPG_REST:
         {
             // REST -> IDLE
@@ -163,6 +172,22 @@ bool NewRpgGoCampAction::Execute(Event /*event*/)
 
     if (auto* data = std::get_if<NewRpgInfo::GoCamp>(&botAI->rpgInfo.data))
         return MoveFarTo(data->pos);
+
+    return false;
+}
+
+bool NewRpgFarmingAction::Execute(Event /*event*/)
+{
+    if (auto* data = std::get_if<NewRpgInfo::Farming>(&botAI->rpgInfo.data))
+    {
+        if (data->pos == WorldPosition())
+            return false;
+
+        if (bot->GetExactDist(data->pos) > 10.0f)
+            return MoveFarTo(data->pos);
+
+        return MoveRandomNear();
+    }
 
     return false;
 }
