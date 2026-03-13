@@ -61,6 +61,7 @@ bool NewRpgStatusUpdateAction::Execute(Event /*event*/)
 {
     NewRpgInfo& info = botAI->rpgInfo;
     NewRpgStatus status = info.GetStatus();
+    uint32 farmingAuctionThreshold = std::max<uint32>(1, sPlayerbotAIConfig.rpgFarmingAuctionThreshold);
     switch (status)
     {
         case RPG_IDLE:
@@ -68,7 +69,7 @@ bool NewRpgStatusUpdateAction::Execute(Event /*event*/)
             uint32 ahItemCount = botAI->GetAiObjectContext()
                                      ->GetValue<uint32>("item count", "usage " + std::to_string(ITEM_USAGE_AH))
                                      ->Get();
-            if (ahItemCount > 0 && CheckRpgStatusAvailable(RPG_WANDER_NPC))
+            if (ahItemCount >= farmingAuctionThreshold && CheckRpgStatusAvailable(RPG_WANDER_NPC))
             {
                 LOG_INFO("playerbots", "[New RPG] {} forcing wander-npc for auction visit (ah items={})",
                     bot->GetName(), ahItemCount);
@@ -77,7 +78,7 @@ bool NewRpgStatusUpdateAction::Execute(Event /*event*/)
             }
 
             return RandomChangeStatus({RPG_GO_CAMP, RPG_GO_GRIND, RPG_WANDER_RANDOM, RPG_WANDER_NPC, RPG_DO_QUEST,
-                                       RPG_TRAVEL_FLIGHT, RPG_REST});
+                                       RPG_TRAVEL_FLIGHT, RPG_FARMING, RPG_REST});
         }
 
         case RPG_GO_GRIND:
@@ -146,6 +147,26 @@ bool NewRpgStatusUpdateAction::Execute(Event /*event*/)
             }
             break;
         }
+        case RPG_FARMING:
+        {
+            uint32 ahItemCount = botAI->GetAiObjectContext()
+                                     ->GetValue<uint32>("item count", "usage " + std::to_string(ITEM_USAGE_AH))
+                                     ->Get();
+            if (ahItemCount >= farmingAuctionThreshold && CheckRpgStatusAvailable(RPG_WANDER_NPC))
+            {
+                LOG_INFO("playerbots", "[New RPG] {} switching farming -> wander-npc to post auction items (ah items={})",
+                    bot->GetName(), ahItemCount);
+                info.ChangeToWanderNpc();
+                return true;
+            }
+
+            if (info.HasStatusPersisted(statusFarmingDuration))
+            {
+                info.ChangeToIdle();
+                return true;
+            }
+            break;
+        }
         case RPG_REST:
         {
             // REST -> IDLE
@@ -179,6 +200,22 @@ bool NewRpgGoCampAction::Execute(Event /*event*/)
 
     if (auto* data = std::get_if<NewRpgInfo::GoCamp>(&botAI->rpgInfo.data))
         return MoveFarTo(data->pos);
+
+    return false;
+}
+
+bool NewRpgFarmingAction::Execute(Event /*event*/)
+{
+    if (auto* data = std::get_if<NewRpgInfo::Farming>(&botAI->rpgInfo.data))
+    {
+        if (data->pos == WorldPosition())
+            return false;
+
+        if (bot->GetExactDist(data->pos) > 10.0f)
+            return MoveFarTo(data->pos);
+
+        return MoveRandomNear();
+    }
 
     return false;
 }

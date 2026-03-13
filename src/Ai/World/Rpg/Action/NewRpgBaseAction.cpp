@@ -1116,6 +1116,16 @@ bool NewRpgBaseAction::RandomChangeStatus(std::vector<NewRpgStatus> candidateSta
             }
             return false;
         }
+        case RPG_FARMING:
+        {
+            WorldPosition pos = SelectRandomGrindPos(bot);
+            if (pos != WorldPosition())
+            {
+                botAI->rpgInfo.ChangeToFarming(pos);
+                return true;
+            }
+            return false;
+        }
         case RPG_DO_QUEST:
         {
             std::vector<uint32> availableQuests;
@@ -1195,6 +1205,11 @@ bool NewRpgBaseAction::CheckRpgStatusAvailable(NewRpgStatus status)
         case RPG_GO_CAMP:
         {
             WorldPosition pos = SelectRandomCampPos(bot);
+            return pos != WorldPosition();
+        }
+        case RPG_FARMING:
+        {
+            WorldPosition pos = SelectRandomGrindPos(bot);
             return pos != WorldPosition();
         }
         case RPG_WANDER_NPC:

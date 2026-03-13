@@ -48,6 +48,12 @@ void NewRpgInfo::ChangeToTravelFlight(ObjectGuid fromFlightMaster, uint32 fromNo
     data = flight;
 }
 
+void NewRpgInfo::ChangeToFarming(WorldPosition pos)
+{
+    startT = getMSTime();
+    data = Farming{pos};
+}
+
 void NewRpgInfo::ChangeToRest()
 {
     startT = getMSTime();
@@ -91,6 +97,7 @@ NewRpgStatus NewRpgInfo::GetStatus()
         if constexpr (std::is_same_v<T, Rest>) return RPG_REST;
         if constexpr (std::is_same_v<T, DoQuest>) return RPG_DO_QUEST;
         if constexpr (std::is_same_v<T, TravelFlight>) return RPG_TRAVEL_FLIGHT;
+        if constexpr (std::is_same_v<T, Farming>) return RPG_FARMING;
         return RPG_IDLE;
     }, data);
 }
@@ -145,6 +152,13 @@ std::string NewRpgInfo::ToString()
             out << "\npoiPos: " << arg.pos.GetMapId() << " " << arg.pos.GetPositionX() << " "
                 << arg.pos.GetPositionY() << " " << arg.pos.GetPositionZ();
             out << "\nlastReachPOI: " << (arg.lastReachPOI ? GetMSTimeDiffToNow(arg.lastReachPOI) : 0);
+        }
+        else if constexpr (std::is_same_v<T, Farming>)
+        {
+            out << "FARMING";
+            out << "\nFarmPos: " << arg.pos.GetMapId() << " " << arg.pos.GetPositionX() << " "
+                << arg.pos.GetPositionY() << " " << arg.pos.GetPositionZ();
+            out << "\nlastFarming: " << startT;
         }
         else if constexpr (std::is_same_v<T, TravelFlight>)
         {

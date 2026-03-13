@@ -216,6 +216,8 @@ bool PlayerbotAIConfig::Initialize()
         sConfigMgr->GetOption<int32>("AiPlayerbot.MinRandomBotsPriceChangeInterval", 2 * HOUR);
     maxRandomBotsPriceChangeInterval =
         sConfigMgr->GetOption<int32>("AiPlayerbot.MaxRandomBotsPriceChangeInterval", 48 * HOUR);
+    rpgFarmingAuctionThreshold =
+        sConfigMgr->GetOption<uint32>("AiPlayerbot.RpgFarmingAuctionThreshold", 20);
     auctionHouseRandomStackSize = sConfigMgr->GetOption<bool>("AiPlayerbot.AuctionHouseRandomStackSize", true);
     auctionHouseMinBidPrice = sConfigMgr->GetOption<uint32>("AiPlayerbot.AuctionHouseMinBidPrice", 100);
     auctionHouseUndercutChance = sConfigMgr->GetOption<uint32>("AiPlayerbot.AuctionHouseUndercutChance", 15);
@@ -656,6 +658,7 @@ bool PlayerbotAIConfig::Initialize()
     RpgStatusProbWeight[RPG_GO_CAMP] = sConfigMgr->GetOption<int32>("AiPlayerbot.RpgStatusProbWeight.GoCamp", 10);
     RpgStatusProbWeight[RPG_DO_QUEST] = sConfigMgr->GetOption<int32>("AiPlayerbot.RpgStatusProbWeight.DoQuest", 60);
     RpgStatusProbWeight[RPG_TRAVEL_FLIGHT] = sConfigMgr->GetOption<int32>("AiPlayerbot.RpgStatusProbWeight.TravelFlight", 15);
+    RpgStatusProbWeight[RPG_FARMING] = sConfigMgr->GetOption<int32>("AiPlayerbot.RpgStatusProbWeight.Farming", 30);
     RpgStatusProbWeight[RPG_REST] = sConfigMgr->GetOption<int32>("AiPlayerbot.RpgStatusProbWeight.Rest", 5);
 
     syncLevelWithPlayers = sConfigMgr->GetOption<bool>("AiPlayerbot.SyncLevelWithPlayers", false);

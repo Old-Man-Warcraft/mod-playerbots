@@ -30,7 +30,9 @@ bool IsSpellReagentItem(ItemTemplate const* proto)
         return false;
 
     return proto->Class == ITEM_CLASS_REAGENT ||
-           (proto->Class == ITEM_CLASS_MISC && proto->SubClass == ITEM_SUBCLASS_REAGENT);
+           (proto->Class == ITEM_CLASS_MISC &&
+               (proto->SubClass == ITEM_SUBCLASS_REAGENT ||
+                   proto->SubClass == ITEM_SUBCLASS_JUNK_REAGENT));
 }
 
 }
@@ -189,7 +191,7 @@ ItemUsage ItemUsageValue::Calculate()
         if (!sPlayerbotAuctionHousePolicyMgr.IsSellable(itemId))
             return ITEM_USAGE_KEEP;
 
-        if (PlayerbotSpellRepository::Instance().IsItemBuyable(itemId))
+        if (PlayerbotSpellRepository::Instance().IsItemBuyable(itemId) && IsSpellReagentItem(proto))
             return ITEM_USAGE_VENDOR;
 
         if (proto->Class == ITEM_CLASS_PROJECTILE)

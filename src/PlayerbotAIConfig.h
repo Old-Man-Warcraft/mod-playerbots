@@ -54,9 +54,11 @@ enum NewRpgStatus : int
     // Travel
 
     RPG_TRAVEL_FLIGHT = 6,
+    // Material farming and gathering loop
+    RPG_FARMING = 7,
     // Taking a break
-    RPG_REST = 7,
-    RPG_STATUS_END = 8
+    RPG_REST = 8,
+    RPG_STATUS_END = 9
 };
 
 #define MAX_SPECNO 20
@@ -141,6 +143,7 @@ public:
     uint32 minRandomBotPvpTime, maxRandomBotPvpTime;
     uint32 randomBotsPerInterval;
     uint32 minRandomBotsPriceChangeInterval, maxRandomBotsPriceChangeInterval;
+    uint32 rpgFarmingAuctionThreshold;
     bool auctionHouseRandomStackSize;
     uint32 auctionHouseMinBidPrice;
     uint32 auctionHouseUndercutChance;
