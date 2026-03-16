@@ -117,15 +117,13 @@ bool HasNearbyAuctioneer(Player* bot, GuidVector const& npcs, ObjectGuid& auctio
     return false;
 }
 
-bool IsReagentItem(ItemTemplate const* proto)
+bool IsSpellReagentItem(ItemTemplate const* proto)
 {
     if (!proto)
         return false;
 
     return proto->Class == ITEM_CLASS_REAGENT ||
-           (proto->Class == ITEM_CLASS_MISC &&
-               (proto->SubClass == ITEM_SUBCLASS_REAGENT ||
-                   proto->SubClass == ITEM_SUBCLASS_JUNK_REAGENT));
+           (proto->Class == ITEM_CLASS_MISC && proto->SubClass == ITEM_SUBCLASS_REAGENT);
 }
 }
 
@@ -249,7 +247,7 @@ bool SellAction::SellToAuctionHouse(Item* item)
         return false;
 
     if (PlayerbotSpellRepository::Instance().IsItemBuyable(item->GetEntry()) &&
-        IsReagentItem(item->GetTemplate()))
+        IsSpellReagentItem(item->GetTemplate()))
         return false;
 
     PlayerbotAuctionItemPolicy policy = sPlayerbotAuctionHousePolicyMgr.GetPolicy(item->GetEntry());
@@ -368,9 +366,6 @@ void SellAction::Sell(FindItemVisitor* visitor)
 void SellAction::Sell(Item* item)
 {
     if (!item)
-        return;
-
-    if (IsReagentItem(item->GetTemplate()))
         return;
 
     ItemUsage usage = context->GetValue<ItemUsage>("item usage", item->GetEntry())->Get();

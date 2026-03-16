@@ -30,9 +30,7 @@ bool IsSpellReagentItem(ItemTemplate const* proto)
         return false;
 
     return proto->Class == ITEM_CLASS_REAGENT ||
-           (proto->Class == ITEM_CLASS_MISC &&
-               (proto->SubClass == ITEM_SUBCLASS_REAGENT ||
-                   proto->SubClass == ITEM_SUBCLASS_JUNK_REAGENT));
+           (proto->Class == ITEM_CLASS_MISC && proto->SubClass == ITEM_SUBCLASS_REAGENT);
 }
 
 }

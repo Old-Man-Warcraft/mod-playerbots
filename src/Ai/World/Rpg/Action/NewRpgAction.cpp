@@ -61,7 +61,6 @@ bool NewRpgStatusUpdateAction::Execute(Event /*event*/)
 {
     NewRpgInfo& info = botAI->rpgInfo;
     NewRpgStatus status = info.GetStatus();
-    uint32 farmingAuctionThreshold = std::max<uint32>(1, sPlayerbotAIConfig.rpgFarmingAuctionThreshold);
     switch (status)
     {
         case RPG_IDLE:
@@ -69,7 +68,7 @@ bool NewRpgStatusUpdateAction::Execute(Event /*event*/)
             uint32 ahItemCount = botAI->GetAiObjectContext()
                                      ->GetValue<uint32>("item count", "usage " + std::to_string(ITEM_USAGE_AH))
                                      ->Get();
-            if (ahItemCount >= farmingAuctionThreshold && CheckRpgStatusAvailable(RPG_WANDER_NPC))
+            if (ahItemCount > 0 && CheckRpgStatusAvailable(RPG_WANDER_NPC))
             {
                 LOG_INFO("playerbots", "[New RPG] {} forcing wander-npc for auction visit (ah items={})",
                     bot->GetName(), ahItemCount);

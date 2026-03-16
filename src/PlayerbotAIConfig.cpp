@@ -216,8 +216,6 @@ bool PlayerbotAIConfig::Initialize()
         sConfigMgr->GetOption<int32>("AiPlayerbot.MinRandomBotsPriceChangeInterval", 2 * HOUR);
     maxRandomBotsPriceChangeInterval =
         sConfigMgr->GetOption<int32>("AiPlayerbot.MaxRandomBotsPriceChangeInterval", 48 * HOUR);
-    rpgFarmingAuctionThreshold =
-        sConfigMgr->GetOption<uint32>("AiPlayerbot.RpgFarmingAuctionThreshold", 20);
     auctionHouseRandomStackSize = sConfigMgr->GetOption<bool>("AiPlayerbot.AuctionHouseRandomStackSize", true);
     auctionHouseMinBidPrice = sConfigMgr->GetOption<uint32>("AiPlayerbot.AuctionHouseMinBidPrice", 100);
     auctionHouseUndercutChance = sConfigMgr->GetOption<uint32>("AiPlayerbot.AuctionHouseUndercutChance", 15);
