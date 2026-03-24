@@ -201,7 +201,7 @@ ItemUsage ItemUsageValue::Calculate()
         if (proto->Quality == ITEM_QUALITY_NORMAL && !IsAuctionHouseMaterial(proto))
             return ITEM_USAGE_VENDOR;
 
-        if (proto->Quality >= ITEM_QUALITY_NORMAL && !isSoulbound)
+        if (proto->Quality >= ITEM_QUALITY_NORMAL && !isSoulbound && proto->Bonding != BIND_WHEN_PICKED_UP)
         {
             uint32 itemCount = bot->GetItemCount(itemId, true);
             if (IsAuctionHouseMaterial(proto) && itemCount > 0 && itemCount < AuctionHouseMaterialMinCount)

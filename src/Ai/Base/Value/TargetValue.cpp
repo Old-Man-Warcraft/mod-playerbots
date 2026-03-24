@@ -23,8 +23,8 @@ Unit* TargetValue::FindTarget(FindTargetStrategy* strategy)
         if (!unit)
             continue;
 
-        ThreatMgr& ThreatMgr = unit->GetThreatMgr();
-        strategy->CheckAttacker(unit, &ThreatMgr);
+        ThreatMgr& threatMgr = unit->GetThreatMgr();
+        strategy->CheckAttacker(unit, &threatMgr);
     }
 
     return strategy->GetResult();
@@ -149,15 +149,21 @@ Unit* FindTargetValue::Calculate()
     {
         ThreatMgr* threatManager = ref->GetSource();
         Unit* unit = threatManager->GetOwner();
+        if (!unit)
+        {
+            ref = ref->next();
+            continue;
+        }
+
         std::wstring wnamepart;
         Utf8toWStr(unit->GetName(), wnamepart);
         wstrToLower(wnamepart);
         if (!qualifier.empty() && qualifier.length() == wnamepart.length() && Utf8FitTo(qualifier, wnamepart))
-        {
             return unit;
-        }
+
         ref = ref->next();
     }
+
     return nullptr;
 }
 
