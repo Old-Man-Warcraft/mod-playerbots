@@ -10,6 +10,38 @@
 #include "SpellMgr.h"
 #include "Util.h"
 
+namespace
+{
+struct ItemScalingData
+{
+    ScalingStatDistributionEntry const* distribution = nullptr;
+    ScalingStatValuesEntry const* values = nullptr;
+    uint32 scalingStatValue = 0;
+};
+
+ItemScalingData GetItemScalingData(Player const* player, ItemTemplate const* proto)
+{
+    ItemScalingData scalingData;
+
+    if (!player || !proto)
+        return scalingData;
+
+    scalingData.distribution =
+        proto->ScalingStatDistribution ? sScalingStatDistributionStore.LookupEntry(proto->ScalingStatDistribution) : nullptr;
+    scalingData.scalingStatValue = proto->ScalingStatValue > 0 ? proto->ScalingStatValue : 0;
+
+    if (!scalingData.scalingStatValue)
+        return scalingData;
+
+    uint32 scaledLevel = player->GetLevel();
+    if (scalingData.distribution && scaledLevel > scalingData.distribution->MaxLevel)
+        scaledLevel = scalingData.distribution->MaxLevel;
+
+    scalingData.values = sScalingStatValuesStore.LookupEntry(scaledLevel);
+    return scalingData;
+}
+} // namespace
+
 StatsCollector::StatsCollector(CollectorType type, int32 cls) : type_(type), cls_(cls) { Reset(); }
 
 void StatsCollector::Reset()
@@ -20,25 +52,90 @@ void StatsCollector::Reset()
     }
 }
 
-void StatsCollector::CollectItemStats(ItemTemplate const* proto)
+void StatsCollector::CollectItemStats(Player const* player, ItemTemplate const* proto)
 {
+    ItemScalingData scalingData = GetItemScalingData(player, proto);
+
     if (proto->IsRangedWeapon())
     {
-        float val = (proto->Damage[0].DamageMin + proto->Damage[0].DamageMax) * 1000 / 2 / proto->Delay;
+        float minDamage = proto->Damage[0].DamageMin;
+        float maxDamage = proto->Damage[0].DamageMax;
+
+        if (scalingData.values)
+        {
+            int32 extraDps = scalingData.values->getDPSMod(scalingData.scalingStatValue);
+            if (extraDps)
+            {
+                float average = extraDps * proto->Delay / 1000.0f;
+                float mod = scalingData.values->IsTwoHand(proto->ScalingStatValue) ? 0.2f : 0.3f;
+                minDamage = (1.0f - mod) * average;
+                maxDamage = (1.0f + mod) * average;
+            }
+        }
+
+        float val = (minDamage + maxDamage) * 1000 / 2 / proto->Delay;
         stats[STATS_TYPE_RANGED_DPS] += val;
     }
     else if (proto->IsWeapon())
     {
-        float val = (proto->Damage[0].DamageMin + proto->Damage[0].DamageMax) * 1000 / 2 / proto->Delay;
+        float minDamage = proto->Damage[0].DamageMin;
+        float maxDamage = proto->Damage[0].DamageMax;
+
+        if (scalingData.values)
+        {
+            int32 extraDps = scalingData.values->getDPSMod(scalingData.scalingStatValue);
+            if (extraDps)
+            {
+                float average = extraDps * proto->Delay / 1000.0f;
+                float mod = scalingData.values->IsTwoHand(proto->ScalingStatValue) ? 0.2f : 0.3f;
+                minDamage = (1.0f - mod) * average;
+                maxDamage = (1.0f + mod) * average;
+            }
+        }
+
+        float val = (minDamage + maxDamage) * 1000 / 2 / proto->Delay;
         stats[STATS_TYPE_MELEE_DPS] += val;
     }
-    stats[STATS_TYPE_ARMOR] += proto->Armor;
-    stats[STATS_TYPE_BLOCK_VALUE] += proto->Block;
-    for (int i = 0; i < proto->StatsCount; i++)
+
+    uint32 armor = proto->Armor;
+    if (scalingData.values)
     {
-        const _ItemStat& stat = proto->ItemStat[i];
-        const int32& val = stat.ItemStatValue;
-        CollectByItemStatType(stat.ItemStatType, val);
+        if (uint32 scaledArmor = scalingData.values->getArmorMod(scalingData.scalingStatValue))
+        {
+            if (proto->ScalingStatValue > 0 || scaledArmor < proto->Armor)
+                armor = scaledArmor;
+        }
+    }
+
+    stats[STATS_TYPE_ARMOR] += armor;
+    stats[STATS_TYPE_BLOCK_VALUE] += proto->Block;
+
+    if (scalingData.values && scalingData.distribution)
+    {
+        for (uint8 index = 0; index < MAX_ITEM_PROTO_STATS; ++index)
+        {
+            if (scalingData.distribution->StatMod[index] < 0)
+                continue;
+
+            uint32 statType = scalingData.distribution->StatMod[index];
+            int32 value =
+                (scalingData.values->getssdMultiplier(scalingData.scalingStatValue) * scalingData.distribution->Modifier[index]) /
+                10000;
+
+            if (!value)
+                continue;
+
+            CollectByItemStatType(statType, value);
+        }
+    }
+    else
+    {
+        for (int i = 0; i < proto->StatsCount; i++)
+        {
+            const _ItemStat& stat = proto->ItemStat[i];
+            const int32& val = stat.ItemStatValue;
+            CollectByItemStatType(stat.ItemStatType, val);
+        }
     }
     for (uint8 j = 0; j < MAX_ITEM_PROTO_SPELLS; j++)
     {
