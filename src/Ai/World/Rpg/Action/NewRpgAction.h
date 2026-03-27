@@ -51,7 +51,6 @@ protected:
     const int32 statusWanderRandomDuration = 5 * 60 * 1000;
     const int32 statusRestDuration = 30 * 1000;
     const int32 statusDoQuestDuration = 30 * 60 * 1000;
-    const int32 statusFarmingDuration = 12 * 60 * 1000;
 };
 
 class NewRpgGoGrindAction : public NewRpgBaseAction
@@ -65,13 +64,6 @@ class NewRpgGoCampAction : public NewRpgBaseAction
 {
 public:
     NewRpgGoCampAction(PlayerbotAI* botAI) : NewRpgBaseAction(botAI, "new rpg go camp") {}
-    bool Execute(Event event) override;
-};
-
-class NewRpgFarmingAction : public NewRpgBaseAction
-{
-public:
-    NewRpgFarmingAction(PlayerbotAI* botAI) : NewRpgBaseAction(botAI, "new rpg farming") {}
     bool Execute(Event event) override;
 };
 

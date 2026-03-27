@@ -991,7 +991,6 @@ AiPlayerbot.EnableNewRpgStrategy = 1
 # GoCamp        (Default: 10  Return to a nearby camp depending on innkeeper/flightmaster)​
 # DoQuest       (Default: 60  Select quest from the quest log and head to the location to attempt completion​)
 # TravelFlight  (Default: 15  Go to the nearest flightmaster and fly to a level-appropriate area)
-# Farming       (Default: 30  Farm mobs/materials (cloth, leather, ore, herbs))
 # Rest          (Default: 5   Take a break for a while and do nothing)
 AiPlayerbot.RpgStatusProbWeight.WanderRandom = 15
 AiPlayerbot.RpgStatusProbWeight.WanderNpc = 20
@@ -999,7 +998,6 @@ AiPlayerbot.RpgStatusProbWeight.GoGrind = 15
 AiPlayerbot.RpgStatusProbWeight.GoCamp = 10
 AiPlayerbot.RpgStatusProbWeight.DoQuest = 60
 AiPlayerbot.RpgStatusProbWeight.TravelFlight = 15
-AiPlayerbot.RpgStatusProbWeight.Farming = 30
 AiPlayerbot.RpgStatusProbWeight.Rest = 5
 
 # Bots' minimum and maximum level when teleporting in and out of a zone, according to the new RPG strategy

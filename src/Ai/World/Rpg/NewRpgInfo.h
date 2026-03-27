@@ -52,12 +52,8 @@ struct NewRpgInfo
         ObjectGuid fromFlightMaster{};
         uint32 fromNode{0};
         uint32 toNode{0};
+        std::vector<uint32> path{};
         bool inFlight{false};
-    };
-    // RPG_FARMING
-    struct Farming
-    {
-        WorldPosition pos{};
     };
     // RPG_REST
     struct Rest
@@ -84,7 +80,6 @@ struct NewRpgInfo
         WanderNpc,
         WanderRandom,
         DoQuest,
-        Farming,
         Rest,
         TravelFlight
     >;
@@ -98,7 +93,6 @@ struct NewRpgInfo
     void ChangeToWanderRandom();
     void ChangeToDoQuest(uint32 questId, const Quest* quest);
     void ChangeToTravelFlight(ObjectGuid fromFlightMaster, uint32 fromNode, uint32 toNode);
-    void ChangeToFarming(WorldPosition pos);
     void ChangeToRest();
     void ChangeToIdle();
     bool CanChangeTo(NewRpgStatus status);

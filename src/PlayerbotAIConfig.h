@@ -54,11 +54,9 @@ enum NewRpgStatus : int
     // Travel
 
     RPG_TRAVEL_FLIGHT = 6,
-    // Material farming and gathering loop
-    RPG_FARMING = 7,
     // Taking a break
-    RPG_REST = 8,
-    RPG_STATUS_END = 9
+    RPG_REST = 7,
+    RPG_STATUS_END = 8
 };
 
 #define MAX_SPECNO 20
@@ -151,7 +149,6 @@ public:
     uint32 auctionHouseUndercutMaxPct;
     uint32 auctionHouseBuyoutMinPct;
     uint32 auctionHouseBuyoutMaxPct;
-    uint32 rpgFarmingAuctionThreshold;
     std::set<uint32> auctionHouseExcludedItemIds;
     uint32 disabledWithoutRealPlayerLoginDelay, disabledWithoutRealPlayerLogoutDelay;
     bool randomBotJoinLfg;

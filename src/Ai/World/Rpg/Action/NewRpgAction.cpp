@@ -4,13 +4,10 @@
 #include <cstdlib>
 
 #include "BroadcastHelper.h"
-#include "AiObjectContext.h"
 #include "ChatHelper.h"
 #include "G3D/Vector2.h"
 #include "GossipDef.h"
-#include "ItemUsageValue.h"
 #include "IVMapMgr.h"
-#include "Log.h"
 #include "NewRpgInfo.h"
 #include "NewRpgStrategy.h"
 #include "Object.h"
@@ -64,26 +61,13 @@ bool NewRpgStatusUpdateAction::Execute(Event /*event*/)
     switch (status)
     {
         case RPG_IDLE:
-        {
-            uint32 ahItemCount = botAI->GetAiObjectContext()
-                                     ->GetValue<uint32>("item count", "usage " + std::to_string(ITEM_USAGE_AH))
-                                     ->Get();
-            if (sPlayerbotAIConfig.enableAuctionHouseBotting &&
-                ahItemCount >= sPlayerbotAIConfig.rpgFarmingAuctionThreshold &&
-                CheckRpgStatusAvailable(RPG_WANDER_NPC))
-            {
-                LOG_DEBUG("playerbots", "[New RPG] {} forcing wander-npc for auction visit (ah items={})",
-                    bot->GetName(), ahItemCount);
-                info.ChangeToWanderNpc();
-                return true;
-            }
-
             return RandomChangeStatus({RPG_GO_CAMP, RPG_GO_GRIND, RPG_WANDER_RANDOM, RPG_WANDER_NPC, RPG_DO_QUEST,
-                                       RPG_TRAVEL_FLIGHT, RPG_FARMING, RPG_REST});
-        }
+                                       RPG_TRAVEL_FLIGHT, RPG_REST});
 
         case RPG_GO_GRIND:
         {
+            auto& data = std::get<NewRpgInfo::GoGrind>(info.data);
+            WorldPosition& originalPos = data.pos;
             assert(data.pos != WorldPosition());
             // GO_GRIND -> WANDER_RANDOM
             if (bot->GetExactDist(originalPos) < 10.0f)
@@ -94,6 +78,8 @@ bool NewRpgStatusUpdateAction::Execute(Event /*event*/)
             break;
         }
         case RPG_GO_CAMP:
+        {
+            auto& data = std::get<NewRpgInfo::GoCamp>(info.data);
             WorldPosition& originalPos = data.pos;
             assert(data.pos != WorldPosition());
             // GO_CAMP -> WANDER_NPC
@@ -144,31 +130,6 @@ bool NewRpgStatusUpdateAction::Execute(Event /*event*/)
             }
             break;
         }
-        case RPG_FARMING:
-        {
-<<<<<<< HEAD
-=======
-            uint32 ahItemCount = botAI->GetAiObjectContext()
-                                     ->GetValue<uint32>("item count", "usage " + std::to_string(ITEM_USAGE_AH))
-                                     ->Get();
-            if (sPlayerbotAIConfig.enableAuctionHouseBotting &&
-                ahItemCount >= sPlayerbotAIConfig.rpgFarmingAuctionThreshold &&
-                CheckRpgStatusAvailable(RPG_WANDER_NPC))
-            {
-                LOG_DEBUG("playerbots", "[New RPG] {} switching farming -> wander-npc to post auction items (ah items={})",
-                    bot->GetName(), ahItemCount);
-                info.ChangeToWanderNpc();
-                return true;
-            }
-
->>>>>>> 5afbe392 (fix(Core/Playerbots): address AH review findings)
-            if (info.HasStatusPersisted(statusFarmingDuration))
-            {
-                info.ChangeToIdle();
-                return true;
-            }
-            break;
-        }
         case RPG_REST:
         {
             // REST -> IDLE
@@ -202,22 +163,6 @@ bool NewRpgGoCampAction::Execute(Event /*event*/)
 
     if (auto* data = std::get_if<NewRpgInfo::GoCamp>(&botAI->rpgInfo.data))
         return MoveFarTo(data->pos);
-
-    return false;
-}
-
-bool NewRpgFarmingAction::Execute(Event /*event*/)
-{
-    if (auto* data = std::get_if<NewRpgInfo::Farming>(&botAI->rpgInfo.data))
-    {
-        if (data->pos == WorldPosition())
-            return false;
-
-        if (bot->GetExactDist(data->pos) > 10.0f)
-            return MoveFarTo(data->pos);
-
-        return MoveRandomNear();
-    }
 
     return false;
 }
@@ -260,33 +205,6 @@ bool NewRpgWanderNpcAction::Execute(Event /*event*/)
             if (bot->CanInteractWithQuestGiver(object))
                 InteractWithNpcOrGameObjectForQuest(data.npcOrGo);
 
-            if (Creature* creature = object->ToCreature())
-            {
-                if (creature->HasNpcFlag(UNIT_NPC_FLAG_AUCTIONEER))
-                {
-                    if (!sPlayerbotAIConfig.enableAuctionHouseBotting)
-                        return true;
-
-                    // Only evaluate AH sell/buy once when the bot first reaches the auctioneer.
-                    // Subsequent updates while lingering here skip this block because lastReach is set.
-                    uint32 ahItemCount = botAI->GetAiObjectContext()
-                                             ->GetValue<uint32>("item count", "usage " + std::to_string(ITEM_USAGE_AH))
-                                             ->Get();
-
-                    if (ahItemCount > 0)
-                    {
-                        LOG_DEBUG("playerbots", "[New RPG] {} selected auctioneer sell (ah items={})",
-                            bot->GetName(), ahItemCount);
-                        botAI->DoSpecificAction("sell", Event("rpg action", "auction"), true);
-                    }
-                    else if (urand(1, 100) <= 25)
-                    {
-                        LOG_DEBUG("playerbots", "[New RPG] {} selected auctioneer buy", bot->GetName());
-                        botAI->DoSpecificAction("buy", Event("rpg action", "auction"), true);
-                    }
-                }
-            }
-
             return true;
         }
 
@@ -314,7 +232,6 @@ bool NewRpgDoQuestAction::Execute(Event /*event*/)
         return false;
     auto& data = *dataPtr;
     uint32 questId = data.questId;
-    const Quest* quest = data.quest;
     uint8 questStatus = bot->GetQuestStatus(questId);
     switch (questStatus)
     {
@@ -521,7 +438,9 @@ bool NewRpgTravelFlightAction::Execute(Event /*event*/)
     if (bot->GetDistance(flightMaster) > INTERACTION_DISTANCE)
         return MoveFarTo(flightMaster);
 
-    std::vector<uint32> nodes = {data.fromNode, data.toNode};
+    std::vector<uint32> nodes = data.path;
+    if (nodes.size() < 2)
+        return false;
 
     botAI->RemoveShapeshift();
     if (bot->IsMounted())
@@ -530,7 +449,7 @@ bool NewRpgTravelFlightAction::Execute(Event /*event*/)
     if (!bot->ActivateTaxiPathTo(nodes, flightMaster, 0))
     {
         LOG_DEBUG("playerbots", "[New RPG] {} active taxi path {} (from {} to {}) failed", bot->GetName(),
-                  flightMaster->GetEntry(), nodes[0], nodes[1]);
+                  flightMaster->GetEntry(), nodes.front(), nodes.back());
         botAI->rpgInfo.ChangeToIdle();
     }
     return true;

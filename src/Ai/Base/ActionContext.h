@@ -262,7 +262,6 @@ public:
         creators["new rpg wander npc"] = &ActionContext::new_rpg_wander_npc;
         creators["new rpg do quest"] = &ActionContext::new_rpg_do_quest;
         creators["new rpg travel flight"] = &ActionContext::new_rpg_travel_flight;
-        creators["new rpg farming"] = &ActionContext::new_rpg_farming;
     }
 
 private:
@@ -457,7 +456,6 @@ private:
     static Action* new_rpg_wander_npc(PlayerbotAI* ai) { return new NewRpgWanderNpcAction(ai); }
     static Action* new_rpg_do_quest(PlayerbotAI* ai) { return new NewRpgDoQuestAction(ai); }
     static Action* new_rpg_travel_flight(PlayerbotAI* ai) { return new NewRpgTravelFlightAction(ai); }
-    static Action* new_rpg_farming(PlayerbotAI* ai) { return new NewRpgFarmingAction(ai); }
 };
 
 #endif
