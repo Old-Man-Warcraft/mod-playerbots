@@ -20,6 +20,7 @@
 #include "PlayerbotAIConfig.h"
 #include "PlayerbotMgr.h"
 #include "PlayerbotRepository.h"
+#include "PlayerbotTextMgr.h"
 #include "RandomPlayerbotMgr.h"
 #include "UseMeetingStoneAction.h"
 #include "WorldSession.h"
@@ -586,12 +587,15 @@ public:
             std::to_string(m_itemTemplateId),
             m_auctioneerGuid.ToString(), m_buyout);
 
-        std::ostringstream out;
-        out << "Buying from auction house "
-            << (boughtItemProto ? ChatHelper::FormatItem(boughtItemProto) :
-                std::to_string(m_itemTemplateId))
-            << " for " << m_buyout;
-        botAI->TellMaster(out.str());
+        std::map<std::string, std::string> placeholders =
+        {
+            {"%item_link", boughtItemProto ? ChatHelper::FormatItem(boughtItemProto) : std::to_string(m_itemTemplateId)},
+            {"%cost", ChatHelper::formatMoney(m_buyout)}
+        };
+        botAI->TellMaster(PlayerbotTextMgr::instance().GetBotTextOrDefault(
+            "auction_buy_success",
+            "Buying from auction house %item_link for %cost",
+            placeholders));
 
         return true;
     }
@@ -686,12 +690,16 @@ public:
             m_itemCount, m_auctioneerGuid.ToString(), m_startBid,
             m_buyout);
 
-        std::ostringstream out;
-        out << "Posting to auction house "
-            << (proto ? ChatHelper::FormatItem(proto, m_itemCount) :
-                std::to_string(m_itemEntry))
-            << " for " << m_startBid << ".." << m_buyout;
-        botAI->TellMaster(out);
+        std::map<std::string, std::string> placeholders =
+        {
+            {"%item_link", proto ? ChatHelper::FormatItem(proto, m_itemCount) : std::to_string(m_itemEntry)},
+            {"%start_bid", ChatHelper::formatMoney(m_startBid)},
+            {"%buyout", ChatHelper::formatMoney(m_buyout)}
+        };
+        botAI->TellMaster(PlayerbotTextMgr::instance().GetBotTextOrDefault(
+            "auction_sell_success",
+            "Posting to auction house %item_link for %start_bid..%buyout",
+            placeholders));
 
         return true;
     }

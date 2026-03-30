@@ -15,6 +15,7 @@
 #include "PlayerbotOperations.h"
 #include "Playerbots.h"
 #include "PlayerbotAuctionHousePolicy.h"
+#include "PlayerbotTextMgr.h"
 #include "PlayerbotWorldThreadProcessor.h"
 #include "ItemPackets.h"
 
@@ -232,7 +233,9 @@ bool SellAction::Execute(Event event)
         return true;
     }
 
-    botAI->TellError("Usage: s gray/*/vendor/auction/[item link]");
+    botAI->TellError(PlayerbotTextMgr::instance().GetBotTextOrDefault(
+        "auction_sell_usage_error",
+        "Usage: s gray/*/vendor/auction/[item link]", {}));
     return false;
 }
 

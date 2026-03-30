@@ -13,6 +13,7 @@
 #include "ItemVisitors.h"
 #include "Log.h"
 #include "PlayerbotOperations.h"
+#include "PlayerbotTextMgr.h"
 #include "PlayerbotWorldThreadProcessor.h"
 #include "Playerbots.h"
 #include "StatsWeightCalculator.h"
@@ -260,7 +261,8 @@ bool BuyAction::BuyFromAuctionHouse()
 
     if (!auctioneer)
     {
-        botAI->TellError("There are no auctioneers nearby");
+        botAI->TellError(PlayerbotTextMgr::instance().GetBotTextOrDefault(
+            "auction_no_auctioneers_nearby", "There are no auctioneers nearby", {}));
         return false;
     }
 

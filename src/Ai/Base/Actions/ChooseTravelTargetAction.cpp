@@ -9,6 +9,7 @@
 #include "ChatHelper.h"
 #include "ItemUsageValue.h"
 #include "LootObjectStack.h"
+#include "PlayerbotTextMgr.h"
 #include "Playerbots.h"
 
 bool ChooseTravelTargetAction::Execute(Event /*event*/)
@@ -285,7 +286,8 @@ void ChooseTravelTargetAction::ReportTravelTarget(TravelTarget* newTarget, Trave
         out << " for ";
 
         if (AI_VALUE2(uint32, "item count", "usage " + std::to_string(ITEM_USAGE_AH)) > 0)
-            out << "auction house";
+            out << PlayerbotTextMgr::instance().GetBotTextOrDefault(
+                "travel_target_activity_auction_house", "auction house", {});
         else if (AI_VALUE2(bool, "group or", "should sell,can sell"))
             out << "selling items";
         else if (AI_VALUE2(bool, "group or", "should repair,can repair"))
