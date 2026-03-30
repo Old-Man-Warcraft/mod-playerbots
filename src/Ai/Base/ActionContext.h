@@ -65,6 +65,7 @@
 #include "NewRpgAction.h"
 #include "FishingAction.h"
 #include "CancelChannelAction.h"
+#include "WaitForAttackAction.h"
 
 class PlayerbotAI;
 
@@ -164,6 +165,7 @@ public:
         creators["blood fury"] = &ActionContext::blood_fury;
         creators["berserking"] = &ActionContext::berserking;
         creators["every man for himself"] = &ActionContext::every_man_for_himself;
+        creators["will of the forsaken"] = &ActionContext::will_of_the_forsaken;
         creators["use trinket"] = &ActionContext::use_trinket;
         creators["auto talents"] = &ActionContext::auto_talents;
         creators["auto share quest"] = &ActionContext::auto_share_quest;
@@ -264,6 +266,7 @@ public:
         creators["new rpg do quest"] = &ActionContext::new_rpg_do_quest;
         creators["new rpg travel flight"] = &ActionContext::new_rpg_travel_flight;
         creators["new rpg farming"] = &ActionContext::new_rpg_farming;
+        creators["wait for attack keep safe distance"] = &ActionContext::wait_for_attack_keep_safe_distance;
     }
 
 private:
@@ -360,6 +363,7 @@ private:
     static Action* blood_fury(PlayerbotAI* botAI) { return new CastBloodFuryAction(botAI); }
     static Action* berserking(PlayerbotAI* botAI) { return new CastBerserkingAction(botAI); }
     static Action* every_man_for_himself(PlayerbotAI* botAI) { return new CastEveryManForHimselfAction(botAI); }
+    static Action* will_of_the_forsaken(PlayerbotAI* botAI) { return new CastWillOfTheForsakenAction(botAI); }
     static Action* use_trinket(PlayerbotAI* botAI) { return new UseTrinketAction(botAI); }
     static Action* auto_talents(PlayerbotAI* botAI) { return new AutoSetTalentsAction(botAI); }
     static Action* auto_share_quest(PlayerbotAI* ai) { return new AutoShareQuestAction(ai); }
@@ -460,6 +464,7 @@ private:
     static Action* new_rpg_do_quest(PlayerbotAI* ai) { return new NewRpgDoQuestAction(ai); }
     static Action* new_rpg_travel_flight(PlayerbotAI* ai) { return new NewRpgTravelFlightAction(ai); }
     static Action* new_rpg_farming(PlayerbotAI* ai) { return new NewRpgFarmingAction(ai); }
+    static Action* wait_for_attack_keep_safe_distance(PlayerbotAI* ai) { return new WaitForAttackKeepSafeDistanceAction(ai); }
 };
 
 #endif
