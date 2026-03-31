@@ -7,6 +7,28 @@
 
 #include "Playerbots.h"
 
+namespace
+{
+    std::string GetMetricName(PerformanceMetric metric)
+    {
+        switch (metric)
+        {
+            case PERF_MON_TRIGGER:
+                return "Trigger";
+            case PERF_MON_VALUE:
+                return "Value";
+            case PERF_MON_ACTION:
+                return "Action";
+            case PERF_MON_RNDBOT:
+                return "RndBot";
+            case PERF_MON_TOTAL:
+                return "Total";
+            default:
+                return "?";
+        }
+    }
+}
+
 PerfMonitorOperation* PerfMonitor::start(PerformanceMetric metric, std::string const name,
                                                        PerformanceStack* stack)
 {
@@ -50,6 +72,48 @@ PerfMonitorOperation* PerfMonitor::start(PerformanceMetric metric, std::string c
 
 void PerfMonitor::PrintStats(bool perTick, bool fullStack)
 {
+    PrintStatsInternal(
+        [](std::string const& line)
+        {
+            LOG_INFO("playerbots", "{}", line);
+        },
+        perTick, fullStack);
+}
+
+bool PerfMonitor::PrintStatsToFile(std::string const& fileName, bool perTick,
+                                   bool fullStack)
+{
+    if (!sPlayerbotAIConfig.openLog(fileName, "a"))
+        return false;
+
+    std::string const reportType = perTick ? "tick" : (fullStack ? "stack" : "total");
+    std::string const timestamp = sPlayerbotAIConfig.GetTimestampStr();
+
+    sPlayerbotAIConfig.log(fileName, "");
+    sPlayerbotAIConfig.log(fileName,
+                           "==================== [%s] playerbots pmon %s ====================",
+                           timestamp.c_str(), reportType.c_str());
+
+    if (data.empty())
+    {
+        sPlayerbotAIConfig.log(fileName, "No performance data collected.");
+        return true;
+    }
+
+    PrintStatsInternal(
+        [fileName](std::string const& line)
+        {
+            sPlayerbotAIConfig.log(fileName, "%s", line.c_str());
+        },
+        perTick, fullStack);
+
+    return true;
+}
+
+void PerfMonitor::PrintStatsInternal(
+    std::function<void(std::string const&)> const& sink, bool perTick,
+    bool fullStack)
+{
     if (data.empty())
         return;
 
@@ -60,42 +124,16 @@ void PerfMonitor::PrintStats(bool perTick, bool fullStack)
             if (map.first.find("PlayerbotAI::UpdateAIInternal") != std::string::npos)
                 updateAITotalTime += map.second->totalTime;
 
-        LOG_INFO(
-            "playerbots",
-            "--------------------------------------[TOTAL BOT]------------------------------------------------------");
-        LOG_INFO("playerbots",
-                 "percentage     time  |     min ..     max (      avg  of      count) - type      : name");
-        LOG_INFO(
-            "playerbots",
-            "-------------------------------------------------------------------------------------------------------");
+        sink("--------------------------------------[TOTAL BOT]------------------------------------------------------");
+        sink("percentage     time  |     min ..     max (      avg  of      count) - type      : name");
+        sink("-------------------------------------------------------------------------------------------------------");
 
         for (std::map<PerformanceMetric, std::map<std::string, PerformanceData*>>::iterator i = data.begin();
              i != data.end(); ++i)
         {
             std::map<std::string, PerformanceData*> pdMap = i->second;
 
-            std::string key;
-            switch (i->first)
-            {
-                case PERF_MON_TRIGGER:
-                    key = "Trigger";
-                    break;
-                case PERF_MON_VALUE:
-                    key = "Value";
-                    break;
-                case PERF_MON_ACTION:
-                    key = "Action";
-                    break;
-                case PERF_MON_RNDBOT:
-                    key = "RndBot";
-                    break;
-                case PERF_MON_TOTAL:
-                    key = "Total";
-                    break;
-                default:
-                    key = "?";
-                    break;
-            }
+            std::string const key = GetMetricName(i->first);
 
             std::vector<std::string> names;
 
@@ -135,9 +173,10 @@ void PerfMonitor::PrintStats(bool perTick, bool fullStack)
 
                 if (perc >= 0.1f || avg >= 0.25f || pd->maxTime > 1000)
                 {
-                    LOG_INFO("playerbots",
-                             "{:7.3f}% {:10.3f}s | {:7.1f} .. {:7.1f} ({:10.3f} of {:10d}) - {:6}    : {}", perc, time,
-                             minTime, maxTime, avg, pd->count, key.c_str(), disName.c_str());
+                    sink(Acore::StringFormat(
+                        "{:7.3f}% {:10.3f}s | {:7.1f} .. {:7.1f} ({:10.3f} of {:10d}) - {:6}    : {}",
+                        perc, time, minTime, maxTime, avg, pd->count, key.c_str(),
+                        disName.c_str()));
                 }
             }
             float tPerc = (float)typeTotalTime / (float)updateAITotalTime * 100.0f;
@@ -145,9 +184,11 @@ void PerfMonitor::PrintStats(bool perTick, bool fullStack)
             float tMinTime = (float)typeMinTime / 1000.0f;
             float tMaxTime = (float)typeMaxTime / 1000.0f;
             float tAvg = (float)typeTotalTime / (float)typeCount / 1000.0f;
-            LOG_INFO("playerbots", "{:7.3f}% {:10.3f}s | {:7.1f} .. {:7.1f} ({:10.3f} of {:10d}) - {:6}    : {}", tPerc,
-                     tTime, tMinTime, tMaxTime, tAvg, typeCount, key.c_str(), "Total");
-            LOG_INFO("playerbots", " ");
+            sink(Acore::StringFormat(
+                "{:7.3f}% {:10.3f}s | {:7.1f} .. {:7.1f} ({:10.3f} of {:10d}) - {:6}    : {}",
+                tPerc, tTime, tMinTime, tMaxTime, tAvg, typeCount, key.c_str(),
+                "Total"));
+            sink(" ");
         }
     }
     else
@@ -155,41 +196,16 @@ void PerfMonitor::PrintStats(bool perTick, bool fullStack)
         float fullTickCount = data[PERF_MON_TOTAL]["PlayerbotAIBase::FullTick"]->count;
         float fullTickTotalTime = data[PERF_MON_TOTAL]["PlayerbotAIBase::FullTick"]->totalTime;
 
-        LOG_INFO(
-            "playerbots",
-            "---------------------------------------[PER TICK]------------------------------------------------------");
-        LOG_INFO("playerbots",
-                 "percentage     time  |     min ..     max (      avg  of      count) - type      : name");
-        LOG_INFO(
-            "playerbots",
-            "-------------------------------------------------------------------------------------------------------");
+        sink("---------------------------------------[PER TICK]------------------------------------------------------");
+        sink("percentage     time  |     min ..     max (      avg  of      count) - type      : name");
+        sink("-------------------------------------------------------------------------------------------------------");
 
         for (std::map<PerformanceMetric, std::map<std::string, PerformanceData*>>::iterator i = data.begin();
              i != data.end(); ++i)
         {
             std::map<std::string, PerformanceData*> pdMap = i->second;
 
-            std::string key;
-            switch (i->first)
-            {
-                case PERF_MON_TRIGGER:
-                    key = "Trigger";
-                    break;
-                case PERF_MON_VALUE:
-                    key = "Value";
-                    break;
-                case PERF_MON_ACTION:
-                    key = "Action";
-                    break;
-                case PERF_MON_RNDBOT:
-                    key = "RndBot";
-                    break;
-                case PERF_MON_TOTAL:
-                    key = "Total";
-                    break;
-                default:
-                    key = "?";
-            }
+            std::string const key = GetMetricName(i->first);
 
             std::vector<std::string> names;
 
@@ -226,9 +242,10 @@ void PerfMonitor::PrintStats(bool perTick, bool fullStack)
                     disName = disName.substr(0, disName.find("|")) + "]";
                 if (perc >= 0.1f || avg >= 0.25f || pd->maxTime > 1000)
                 {
-                    LOG_INFO("playerbots",
-                             "{:7.3f}% {:9.3f}ms | {:7.1f} .. {:7.1f} ({:10.3f} of {:10.2f}) - {:6}    : {}", perc,
-                             time, minTime, maxTime, avg, amount, key.c_str(), disName.c_str());
+                    sink(Acore::StringFormat(
+                        "{:7.3f}% {:9.3f}ms | {:7.1f} .. {:7.1f} ({:10.3f} of {:10.2f}) - {:6}    : {}",
+                        perc, time, minTime, maxTime, avg, amount, key.c_str(),
+                        disName.c_str()));
                 }
             }
             if (i->first != PERF_MON_TOTAL)
@@ -239,10 +256,12 @@ void PerfMonitor::PrintStats(bool perTick, bool fullStack)
                 float tMaxTime = (float)typeMaxTime / 1000.0f;
                 float tAvg = (float)typeTotalTime / (float)typeCount / 1000.0f;
                 float tAmount = (float)typeCount / fullTickCount;
-                LOG_INFO("playerbots", "{:7.3f}% {:9.3f}ms | {:7.1f} .. {:7.1f} ({:10.3f} of {:10.2f}) - {:6}    : {}",
-                         tPerc, tTime, tMinTime, tMaxTime, tAvg, tAmount, key.c_str(), "Total");
+                sink(Acore::StringFormat(
+                    "{:7.3f}% {:9.3f}ms | {:7.1f} .. {:7.1f} ({:10.3f} of {:10.2f}) - {:6}    : {}",
+                    tPerc, tTime, tMinTime, tMaxTime, tAvg, tAmount, key.c_str(),
+                    "Total"));
             }
-            LOG_INFO("playerbots", " ");
+            sink(" ");
         }
     }
 }

@@ -8,6 +8,7 @@
 
 #include <chrono>
 #include <ctime>
+#include <functional>
 #include <map>
 #include <mutex>
 #include <vector>
@@ -59,6 +60,8 @@ public:
     PerfMonitorOperation* start(PerformanceMetric metric, std::string const name,
                                        PerformanceStack* stack = nullptr);
     void PrintStats(bool perTick = false, bool fullStack = false);
+    bool PrintStatsToFile(std::string const& fileName, bool perTick = false,
+                          bool fullStack = false);
     void Reset();
 
 private:
@@ -70,6 +73,9 @@ private:
 
     PerfMonitor(PerfMonitor&&) = delete;
     PerfMonitor& operator=(PerfMonitor&&) = delete;
+
+    void PrintStatsInternal(std::function<void(std::string const&)> const& sink,
+                            bool perTick, bool fullStack);
 
     std::map<PerformanceMetric, std::map<std::string, PerformanceData*> > data;
     std::mutex lock;
