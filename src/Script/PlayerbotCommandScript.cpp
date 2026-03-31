@@ -23,6 +23,14 @@
 
 using namespace Acore::ChatCommands;
 
+namespace
+{
+    std::string GetPerfMonFileHelp()
+    {
+        return "Usage: .playerbots pmon file [tick|stack] (requires AiPlayerbot.AllowedLogFiles to include pmon.log)";
+    }
+}
+
 class playerbots_commandscript : public CommandScript
 {
 public:
@@ -74,25 +82,50 @@ public:
 
     static bool HandlePerfMonCommand(ChatHandler* handler, char const* args)
     {
-        if (!strcmp(args, "reset"))
+        std::string const command = args ? args : "";
+
+        if (command == "file" || command == "file tick" || command == "file stack")
+        {
+            bool const perTick = command == "file tick";
+            bool const fullStack = command == "file stack";
+
+            if (!sPerfMonitor.PrintStatsToFile("pmon.log", perTick, fullStack))
+            {
+                handler->PSendSysMessage("Unable to write pmon.log. Add pmon.log to AiPlayerbot.AllowedLogFiles and reload the configuration.");
+                handler->SetSentErrorMessage(true);
+                return false;
+            }
+
+            handler->PSendSysMessage("Appended playerbots performance snapshot to pmon.log.");
+            return true;
+        }
+
+        if (!command.empty() && command.rfind("file", 0) == 0)
+        {
+            handler->PSendSysMessage(GetPerfMonFileHelp().c_str());
+            handler->SetSentErrorMessage(true);
+            return false;
+        }
+
+        if (command == "reset")
         {
             sPerfMonitor.Reset();
             return true;
         }
 
-        if (!strcmp(args, "tick"))
+        if (command == "tick")
         {
             sPerfMonitor.PrintStats(true, false);
             return true;
         }
 
-        if (!strcmp(args, "stack"))
+        if (command == "stack")
         {
             sPerfMonitor.PrintStats(false, true);
             return true;
         }
 
-        if (!strcmp(args, "toggle"))
+        if (command == "toggle")
         {
             sPlayerbotAIConfig.perfMonEnabled = !sPlayerbotAIConfig.perfMonEnabled;
             if (sPlayerbotAIConfig.perfMonEnabled)

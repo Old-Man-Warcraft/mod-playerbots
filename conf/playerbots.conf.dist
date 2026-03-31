@@ -2038,6 +2038,9 @@ AiPlayerbot.TellWhenAvoidAoe = 0
 # Enable/Disable performance monitor
 AiPlayerbot.PerfMonEnabled = 0
 
+# The command ".playerbots pmon file [tick|stack]" appends snapshots to pmon.log.
+# Add pmon.log here to allow that file to be created in LogsDir.
+
 #
 #
 #
@@ -2162,7 +2165,7 @@ AiPlayerbot.BroadcastChanceGuildManagement = 30000
 #
 
 # Custom config to allow logfiles to be created.
-# Example: AiPlayerbot.AllowedLogFiles = travelNodes.csv,travelPaths.csv,TravelNodeStore.h,bot_movement.csv,bot_location.csv
+# Example: AiPlayerbot.AllowedLogFiles = travelNodes.csv,travelPaths.csv,TravelNodeStore.h,bot_movement.csv,bot_location.csv,pmon.log
 AiPlayerbot.AllowedLogFiles = ""
 
 #
