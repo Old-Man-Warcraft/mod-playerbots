@@ -1015,6 +1015,13 @@ AiPlayerbot.RpgStatusProbWeight.DoQuest = 60
 AiPlayerbot.RpgStatusProbWeight.TravelFlight = 15
 AiPlayerbot.RpgStatusProbWeight.Rest = 5
 
+# When GoGrind is selected and the bot has at least this many AH-eligible item units,
+# route that grind trip to the nearest auctioneer instead of a random grind spot.
+# Set to 0 to disable this explicit grind -> auction house handoff.
+# Legacy compatibility: if this key is unset, the old AiPlayerbot.RpgFarmingAuctionThreshold
+# value is still used as a fallback.
+AiPlayerbot.RpgGrindAuctionThreshold = 0
+
 # Bots' minimum and maximum level when teleporting in and out of a zone, according to the new RPG strategy
 # Format: AiPlayerbot.ZoneBracket.zoneID = minLevel,maxLevel
 #

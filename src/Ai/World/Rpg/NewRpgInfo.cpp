@@ -4,10 +4,10 @@
 
 #include "Timer.h"
 
-void NewRpgInfo::ChangeToGoGrind(WorldPosition pos)
+void NewRpgInfo::ChangeToGoGrind(WorldPosition pos, bool auctionHouse)
 {
     startT = getMSTime();
-    data = GoGrind{pos};
+    data = GoGrind{pos, auctionHouse};
 }
 
 void NewRpgInfo::ChangeToGoCamp(WorldPosition pos)
@@ -106,6 +106,7 @@ std::string NewRpgInfo::ToString()
             out << "GO_GRIND";
             out << "\nGrindPos: " << arg.pos.GetMapId() << " " << arg.pos.GetPositionX() << " "
                 << arg.pos.GetPositionY() << " " << arg.pos.GetPositionZ();
+            out << "\nauctionHouse: " << arg.auctionHouse;
             out << "\nlastGoGrind: " << startT;
         }
         else if constexpr (std::is_same_v<T, GoCamp>)

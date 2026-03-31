@@ -20,6 +20,7 @@ struct NewRpgInfo
     struct GoGrind
     {
         WorldPosition pos{};
+        bool auctionHouse{false};
     };
     // RPG_GO_CAMP
     struct GoCamp
@@ -85,7 +86,7 @@ struct NewRpgInfo
 
     NewRpgStatus GetStatus();
     bool HasStatusPersisted(uint32 maxDuration) { return GetMSTimeDiffToNow(startT) > maxDuration; }
-    void ChangeToGoGrind(WorldPosition pos);
+    void ChangeToGoGrind(WorldPosition pos, bool auctionHouse = false);
     void ChangeToGoCamp(WorldPosition pos);
     void ChangeToWanderNpc();
     void ChangeToWanderRandom();

@@ -1,5 +1,6 @@
 #include "NewRpgBaseAction.h"
 
+#include "AuctionHouseBotHelper.h"
 #include "BroadcastHelper.h"
 #include "ChatHelper.h"
 #include "Creature.h"
@@ -202,6 +203,74 @@ bool NewRpgBaseAction::ForceToWait(uint32 duration, MovementPriority priority)
         .Set(bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ(), bot->GetOrientation(),
              duration, priority);
     return true;
+}
+
+bool NewRpgBaseAction::ShouldTriggerAuctionHouseFromGrind()
+{
+    if (!sPlayerbotAIConfig.enableAuctionHouseBotting)
+        return false;
+
+    if (!sPlayerbotAIConfig.rpgGrindAuctionThreshold)
+        return false;
+
+    uint32 ahItemCount = AI_VALUE2(uint32, "item count", "usage " + std::to_string(ITEM_USAGE_AH));
+    if (!ahItemCount)
+        return false;
+
+    return ahItemCount >= sPlayerbotAIConfig.rpgGrindAuctionThreshold;
+}
+
+WorldPosition NewRpgBaseAction::SelectAuctionHouseTravelPos()
+{
+    WorldPosition botPos(bot);
+    WorldPosition bestPos;
+    float bestDistance = std::numeric_limits<float>::max();
+
+    for (CreatureData const* creatureData : WorldPosition().getCreaturesNear())
+    {
+        if (!creatureData)
+            continue;
+
+        CreatureTemplate const* creatureInfo = sObjectMgr->GetCreatureTemplate(creatureData->id1);
+        if (!creatureInfo)
+            continue;
+
+        if (!(creatureInfo->npcflag & UNIT_NPC_FLAG_AUCTIONEER))
+            continue;
+
+        FactionTemplateEntry const* factionEntry = sFactionTemplateStore.LookupEntry(creatureInfo->faction);
+        ReputationRank reaction = Unit::GetFactionReactionTo(bot->GetFactionTemplateEntry(), factionEntry);
+        if (reaction < REP_NEUTRAL)
+            continue;
+
+        WorldPosition candidatePos(creatureData->mapid, creatureData->posX, creatureData->posY, creatureData->posZ,
+                                   creatureData->orientation);
+
+        float distance = candidatePos.distance(&botPos);
+        if (distance < bestDistance)
+        {
+            bestDistance = distance;
+            bestPos = candidatePos;
+        }
+    }
+
+    if (bestPos != WorldPosition())
+        return bestPos;
+
+    for (WorldLocation const& cityLocation : sTravelMgr.GetCityLocations(bot))
+    {
+        WorldPosition candidatePos(cityLocation.GetMapId(), cityLocation.GetPositionX(), cityLocation.GetPositionY(),
+                                   cityLocation.GetPositionZ(), cityLocation.GetOrientation());
+
+        float distance = candidatePos.distance(&botPos);
+        if (distance < bestDistance)
+        {
+            bestDistance = distance;
+            bestPos = candidatePos;
+        }
+    }
+
+    return bestPos;
 }
 
 /// @TODO: Fix redundant code
@@ -930,6 +999,10 @@ WorldPosition NewRpgBaseAction::SelectRandomGrindPos(Player* bot)
         uint32 idx = urand(0, lo_prepared_locs.size() - 1);
         dest = lo_prepared_locs[idx];
     }
+
+    if (!dest.IsValid())
+        return dest;
+
     LOG_DEBUG("playerbots", "[New RPG] Bot {} select random grind pos Map:{} X:{} Y:{} Z:{} ({}+{} available in {})",
               bot->GetName(), dest.GetMapId(), dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ(),
               hi_prepared_locs.size(), lo_prepared_locs.size() - hi_prepared_locs.size(), locs.size());
@@ -973,6 +1046,10 @@ WorldPosition NewRpgBaseAction::SelectRandomCampPos(Player* bot)
         uint32 idx = urand(0, prepared_locs.size() - 1);
         dest = prepared_locs[idx];
     }
+
+    if (!dest.IsValid())
+        return dest;
+
     LOG_DEBUG("playerbots", "[New RPG] Bot {} select random inn keeper pos Map:{} X:{} Y:{} Z:{} ({} available in {})",
               bot->GetName(), dest.GetMapId(), dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ(),
               prepared_locs.size(), locs.size());
@@ -1044,10 +1121,32 @@ bool NewRpgBaseAction::RandomChangeStatus(std::vector<NewRpgStatus> candidateSta
         }
         case RPG_GO_GRIND:
         {
-            WorldPosition pos = SelectRandomGrindPos(bot);
+            bool travelToAuctionHouse = ShouldTriggerAuctionHouseFromGrind();
+            uint32 ahItemCount = 0;
+            if (travelToAuctionHouse)
+                ahItemCount = AI_VALUE2(uint32, "item count", "usage " + std::to_string(ITEM_USAGE_AH));
+
+            WorldPosition pos = travelToAuctionHouse ? SelectAuctionHouseTravelPos() : WorldPosition();
+            if (pos == WorldPosition())
+            {
+                if (travelToAuctionHouse)
+                    LOG_DEBUG("playerbots",
+                              "[New RPG] Bot {} reached AH grind threshold ({} >= {}) but found no auctioneer travel position",
+                              bot->GetName(), ahItemCount, sPlayerbotAIConfig.rpgGrindAuctionThreshold);
+
+                travelToAuctionHouse = false;
+                pos = SelectRandomGrindPos(bot);
+            }
+
             if (pos != WorldPosition())
             {
-                botAI->rpgInfo.ChangeToGoGrind(pos);
+                if (travelToAuctionHouse)
+                    LOG_DEBUG("playerbots",
+                              "[New RPG] Bot {} rerouting GoGrind to auction house at Map:{} X:{} Y:{} Z:{} with {} AH items (threshold {})",
+                              bot->GetName(), pos.GetMapId(), pos.GetPositionX(), pos.GetPositionY(), pos.GetPositionZ(),
+                              ahItemCount, sPlayerbotAIConfig.rpgGrindAuctionThreshold);
+
+                botAI->rpgInfo.ChangeToGoGrind(pos, travelToAuctionHouse);
                 return true;
             }
             return false;
@@ -1135,8 +1234,12 @@ bool NewRpgBaseAction::CheckRpgStatusAvailable(NewRpgStatus status)
         }
         case RPG_GO_GRIND:
         {
-            WorldPosition pos = SelectRandomGrindPos(bot);
-            return pos != WorldPosition();
+            bool travelToAuctionHouse = ShouldTriggerAuctionHouseFromGrind();
+            WorldPosition pos = travelToAuctionHouse ? SelectAuctionHouseTravelPos() : SelectRandomGrindPos(bot);
+            if (!pos.IsValid() && travelToAuctionHouse)
+                pos = SelectRandomGrindPos(bot);
+
+            return pos.IsValid();
         }
         case RPG_GO_CAMP:
         {

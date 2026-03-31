@@ -69,10 +69,18 @@ bool NewRpgStatusUpdateAction::Execute(Event /*event*/)
             auto& data = std::get<NewRpgInfo::GoGrind>(info.data);
             WorldPosition& originalPos = data.pos;
             assert(data.pos != WorldPosition());
-            // GO_GRIND -> WANDER_RANDOM
+            // GO_GRIND -> WANDER_RANDOM or WANDER_NPC when the grind leg was rerouted to an auctioneer
             if (bot->GetExactDist(originalPos) < 10.0f)
             {
-                info.ChangeToWanderRandom();
+                if (data.auctionHouse)
+                {
+                    LOG_DEBUG("playerbots",
+                              "[New RPG] Bot {} arrived at auction house grind destination and is switching to NPC interaction",
+                              bot->GetName());
+                    info.ChangeToWanderNpc();
+                }
+                else
+                    info.ChangeToWanderRandom();
                 return true;
             }
             break;
@@ -202,7 +210,13 @@ bool NewRpgWanderNpcAction::Execute(Event /*event*/)
         if (!data.lastReach)
         {
             data.lastReach = getMSTime();
-            if (bot->CanInteractWithQuestGiver(object))
+            if (Creature* creature = object->ToCreature(); creature && creature->HasNpcFlag(UNIT_NPC_FLAG_AUCTIONEER))
+            {
+                LOG_DEBUG("playerbots", "[New RPG] Bot {} reached auctioneer {} and is triggering auction sell action",
+                          bot->GetName(), creature->GetEntry());
+                botAI->DoSpecificAction("sell", Event("rpg action", "auction"), true);
+            }
+            else if (bot->CanInteractWithQuestGiver(object))
                 InteractWithNpcOrGameObjectForQuest(data.npcOrGo);
             return true;
         }

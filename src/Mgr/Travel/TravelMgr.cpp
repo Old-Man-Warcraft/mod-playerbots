@@ -1078,6 +1078,14 @@ GuidPosition::GuidPosition(GameObjectData const& goData)
     loadedFromDB = true;
 }
 
+TravelDestination::~TravelDestination()
+{
+    for (WorldPosition* point : points)
+        delete point;
+
+    points.clear();
+}
+
 std::vector<WorldPosition*> TravelDestination::getPoints(bool ignoreFull)
 {
     if (ignoreFull)
@@ -4733,13 +4741,29 @@ void TravelMgr::PrepareDestinationCache()
         {
             CreatureTemplate const* creatureTemplate = sObjectMgr->GetCreatureTemplate(creatureDataList[0].id1);
             uint32 level = (creatureTemplate->minlevel + creatureTemplate->maxlevel + 1) / 2;
+
+            float totalX = 0.0f;
+            float totalY = 0.0f;
+            float totalZ = 0.0f;
+            for (CreatureData const& creatureData : creatureDataList)
+            {
+                totalX += creatureData.posX;
+                totalY += creatureData.posY;
+                totalZ += creatureData.posZ;
+            }
+
+            float avgX = totalX / creatureDataList.size();
+            float avgY = totalY / creatureDataList.size();
+            float avgZ = totalZ / creatureDataList.size();
+            uint32 mapId = std::get<0>(gridTuple);
+
             for (int32 l = (int32)level - (int32)sPlayerbotAIConfig.randomBotTeleLowerLevel;
                  l <= (int32)level + (int32)sPlayerbotAIConfig.randomBotTeleHigherLevel; l++)
             {
                 if (l < 1 || l > maxLevel)
                     continue;
 
-                locsPerLevelCache[(uint8)l].push_back(WorldLocation(std::get<0>(gridTuple)));
+                locsPerLevelCache[(uint8)l].push_back(WorldLocation(mapId, avgX, avgY, avgZ, 0.0f));
             }
         }
     }

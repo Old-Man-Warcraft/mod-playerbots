@@ -52,6 +52,8 @@ protected:
 
 protected:
     bool GetQuestPOIPosAndObjectiveIdx(uint32 questId, std::vector<POIInfo>& poiInfo, bool toComplete = false);
+    bool ShouldTriggerAuctionHouseFromGrind();
+    WorldPosition SelectAuctionHouseTravelPos();
     static WorldPosition SelectRandomGrindPos(Player* bot);
     static WorldPosition SelectRandomCampPos(Player* bot);
     bool SelectRandomFlightTaxiNode(ObjectGuid& flightMaster, std::vector<uint32>& path);

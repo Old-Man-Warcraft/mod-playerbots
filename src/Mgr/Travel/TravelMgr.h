@@ -507,9 +507,15 @@ public:
         radiusMin = radiusMin1;
         radiusMax = radiusMax1;
     }
-    virtual ~TravelDestination() = default;
+    virtual ~TravelDestination();
 
-    void addPoint(WorldPosition* pos) { points.push_back(pos); }
+    void addPoint(WorldPosition* pos)
+    {
+        if (!pos)
+            return;
+
+        points.push_back(new WorldPosition(*pos));
+    }
 
     void setExpireDelay(uint32 delay) { expireDelay = delay; }
 
@@ -673,7 +679,7 @@ public:
     bool isActive(Player* bot) override;
     virtual CreatureTemplate const* GetCreatureTemplate();
     std::string const getName() override { return "RpgTravelDestination"; }
-    int32 getEntry() override { return 0; }
+    int32 getEntry() override { return entry; }
     std::string const getTitle() override;
 
 protected:
