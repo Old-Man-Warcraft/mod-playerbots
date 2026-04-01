@@ -57,6 +57,8 @@ struct NewRpgInfo
     struct Farming
     {
         WorldPosition pos{};
+        ObjectGuid gatheringNode{};
+        uint32 lastGatherSearch{0};
     };
     // RPG_REST
     struct Rest
@@ -97,6 +99,7 @@ struct NewRpgInfo
     void ChangeToWanderRandom();
     void ChangeToDoQuest(uint32 questId, const Quest* quest);
     void ChangeToTravelFlight(ObjectGuid fromFlightMaster, std::vector<uint32> path);
+    void ChangeToFarming(WorldPosition pos);
     void ChangeToRest();
     void ChangeToIdle();
     bool CanChangeTo(NewRpgStatus status);

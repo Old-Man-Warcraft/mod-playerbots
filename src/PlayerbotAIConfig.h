@@ -368,6 +368,10 @@ public:
     bool autoLearnTrainerSpells;
     bool autoDoQuests;
     bool enableNewRpgStrategy;
+    bool enableRpgGathering;
+    bool debugRpgGathering;
+    float rpgGatheringSearchRadius;
+    uint32 rpgGatheringSearchDelay;
     std::unordered_map<NewRpgStatus, uint32> RpgStatusProbWeight;
     bool syncLevelWithPlayers;
     bool autoLearnQuestSpells;

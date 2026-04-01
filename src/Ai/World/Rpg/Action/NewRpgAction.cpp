@@ -8,6 +8,7 @@
 #include "G3D/Vector2.h"
 #include "GossipDef.h"
 #include "IVMapMgr.h"
+#include "LootObjectStack.h"
 #include "NewRpgInfo.h"
 #include "NewRpgStrategy.h"
 #include "Object.h"
@@ -182,6 +183,54 @@ bool NewRpgFarmingAction::Execute(Event /*event*/)
     {
         if (data->pos == WorldPosition())
             return false;
+
+        if (bot->IsInCombat())
+            return false;
+
+        if (data->gatheringNode)
+        {
+            LootObject loot(bot, data->gatheringNode);
+            SkillType skill = static_cast<SkillType>(loot.skillId);
+            if (!loot.IsEmpty() && loot.IsLootPossible(bot) && IsSupportedRpgGatheringSkill(skill))
+            {
+                QueueGatheringLoot(data->gatheringNode);
+
+                WorldObject* node = ObjectAccessor::GetWorldObject(*bot, data->gatheringNode);
+                if (node && !IsWithinInteractionDist(node))
+                    return MoveWorldObjectTo(data->gatheringNode);
+
+                return true;
+            }
+
+            if (sPlayerbotAIConfig.debugRpgGathering)
+            {
+                LOG_DEBUG("playerbots",
+                          "[New RPG][Gather] {} dropped tracked node {} because it is no longer gatherable",
+                          bot->GetName(), data->gatheringNode.ToString());
+            }
+
+            data->gatheringNode.Clear();
+        }
+
+        if (!data->lastGatherSearch ||
+            GetMSTimeDiffToNow(data->lastGatherSearch) >= sPlayerbotAIConfig.rpgGatheringSearchDelay)
+        {
+            data->lastGatherSearch = getMSTime();
+
+            if (ObjectGuid gatheringNode = FindNearbyGatheringGameObject())
+            {
+                data->gatheringNode = gatheringNode;
+                QueueGatheringLoot(gatheringNode);
+
+                if (sPlayerbotAIConfig.debugRpgGathering)
+                {
+                    LOG_DEBUG("playerbots", "[New RPG][Gather] {} queued node {} while farming", bot->GetName(),
+                              gatheringNode.ToString());
+                }
+
+                return true;
+            }
+        }
 
         if (bot->GetExactDist(data->pos) > 10.0f)
             return MoveFarTo(data->pos);

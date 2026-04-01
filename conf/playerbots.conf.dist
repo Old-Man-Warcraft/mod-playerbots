@@ -581,10 +581,10 @@ AiPlayerbot.AutoGearScoreLimit = 0
 # Default: food, taxi, and raid are enabled
 AiPlayerbot.BotCheats = "food,taxi,raid"
 
-# List of attunement quests (comma-separated list of quest IDs) that are automatically completed for all bots.  
+# List of attunement quests (comma-separated list of quest IDs) that are automatically completed for all bots.
 # While mod-playerbots does not restore removed attunement requirements, although other mods, such as mod-individual-progression, may do so.
 # This is meant to exclude bots from such requirements.
-# 
+#
 # Default:
 # Caverns of Time - Part 1
 # - 10279, To The Master's Lair
@@ -996,6 +996,25 @@ AiPlayerbot.RestrictedHealerDPSMaps = "33,34,36,43,47,48,70,90,109,129,209,229,2
 # This option will override AiPlayerbot.AutoDoQuests, RandomBotTeleLowerLevel, and RandomBotTeleHigherLevel
 # Default: 1 (enabled)
 AiPlayerbot.EnableNewRpgStrategy = 1
+
+# Allow bots in the new RPG farming cycle to actively search nearby gathering nodes that match their professions.
+# This reuses the normal loot/gather flow, so miners still need a mining pick and bots still need enough skill.
+# Default: 0 (disabled)
+AiPlayerbot.EnableRpgGathering = 0
+
+# Enable extra debug output for RPG gathering decisions such as node selection, skill gating and invalid nodes.
+# Default: 0 (disabled)
+AiPlayerbot.DebugRpgGathering = 0
+
+# Maximum distance, in yards, used when scanning for nearby herb and ore nodes during the RPG farming cycle.
+# When multiple valid nodes are found, bots prefer nodes that are closest to their profession skill level,
+# then break ties by distance.
+# Default: 150.0
+AiPlayerbot.RpgGatheringSearchRadius = 150.0
+
+# Minimum delay, in milliseconds, between RPG gathering scans.
+# Default: 3000
+AiPlayerbot.RpgGatheringSearchDelay = 3000
 
 # Control probability weights for RPG status of bots. Takes effect only when the status meets its premise.​
 # Sum of weights need not be 100. Set to 0 to disable the status.

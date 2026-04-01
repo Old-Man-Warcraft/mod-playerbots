@@ -1,15 +1,20 @@
 #include "NewRpgBaseAction.h"
 
 #include "BroadcastHelper.h"
+#include "CellImpl.h"
 #include "ChatHelper.h"
 #include "Creature.h"
 #include "G3D/Vector2.h"
 #include "GameObject.h"
+#include "GridNotifiers.h"
+#include "GridNotifiersImpl.h"
 #include "GossipDef.h"
 #include "GridTerrainData.h"
 #include "IVMapMgr.h"
+#include "LootObjectStack.h"
 #include "NewRpgInfo.h"
 #include "NewRpgStrategy.h"
+#include "NearestGameObjects.h"
 #include "Object.h"
 #include "ObjectAccessor.h"
 #include "ObjectDefines.h"
@@ -28,6 +33,24 @@
 #include "StatsWeightCalculator.h"
 #include "Timer.h"
 #include "TravelMgr.h"
+
+namespace
+{
+bool CanPathToGatheringNode(Player* bot, GameObject* go)
+{
+    if (!bot || !go)
+        return false;
+
+    if (bot->GetDistance(go) <= INTERACTION_DISTANCE - 2.0f)
+        return true;
+
+    PathGenerator path(bot);
+    path.CalculatePath(go->GetPositionX(), go->GetPositionY(), go->GetPositionZ());
+    PathType type = path.GetPathType();
+    uint32 typeOk = PATHFIND_NORMAL | PATHFIND_INCOMPLETE | PATHFIND_FARFROMPOLY;
+    return !(type & (~typeOk));
+}
+}  // namespace
 
 bool NewRpgBaseAction::MoveFarTo(WorldPosition dest)
 {
@@ -201,6 +224,172 @@ bool NewRpgBaseAction::ForceToWait(uint32 duration, MovementPriority priority)
         .Set(bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ(), bot->GetOrientation(),
              duration, priority);
     return true;
+}
+
+ObjectGuid NewRpgBaseAction::FindNearbyGatheringGameObject(float distanceLimit)
+{
+    if (!sPlayerbotAIConfig.enableRpgGathering)
+        return ObjectGuid();
+
+    if (!botAI->HasSkill(SKILL_HERBALISM) && !botAI->HasSkill(SKILL_MINING))
+        return ObjectGuid();
+
+    float searchRadius = distanceLimit > 0.0f ? distanceLimit : sPlayerbotAIConfig.rpgGatheringSearchRadius;
+
+    std::list<GameObject*> targets;
+    AnyGameObjectInObjectRangeCheck u_check(bot, searchRadius);
+    Acore::GameObjectListSearcher<AnyGameObjectInObjectRangeCheck> searcher(bot, targets, u_check);
+    Cell::VisitObjects(bot, searcher, searchRadius);
+
+    GameObject* nearest = nullptr;
+    float nearestDistance = std::numeric_limits<float>::max();
+    uint32 nearestSkillGap = std::numeric_limits<uint32>::max();
+    uint32 nearestReqSkill = 0;
+    SkillType nearestSkill = SKILL_NONE;
+    uint32 consideredNodes = 0;
+    uint32 nonGatheringNodes = 0;
+    uint32 unsupportedNodes = 0;
+    uint32 insufficientSkillNodes = 0;
+    uint32 missingToolNodes = 0;
+    uint32 unreachableNodes = 0;
+    uint32 blockedNodes = 0;
+    for (GameObject* go : targets)
+    {
+        if (!go || !go->IsInWorld() || !go->isSpawned())
+            continue;
+
+        consideredNodes++;
+
+        if (go->GetGoState() != GO_STATE_READY)
+            continue;
+
+        if (go->HasFlag(GAMEOBJECT_FLAGS, GO_FLAG_INTERACT_COND | GO_FLAG_NOT_SELECTABLE))
+            continue;
+
+        if (sPlayerbotAIConfig.disallowedGameObjects.find(go->GetEntry()) !=
+            sPlayerbotAIConfig.disallowedGameObjects.end())
+            continue;
+
+        LootObject loot(bot, go->GetGUID());
+        SkillType skill = static_cast<SkillType>(loot.skillId);
+        if (loot.IsEmpty())
+        {
+            nonGatheringNodes++;
+            continue;
+        }
+
+        if (!IsSupportedRpgGatheringSkill(skill))
+        {
+            unsupportedNodes++;
+            continue;
+        }
+
+        uint32 botSkillValue = GetRpgGatheringSkillValue(skill);
+        uint32 reqSkillValue = std::max<uint32>(1, loot.reqSkillValue);
+
+        if (!botAI->HasSkill(skill) || botSkillValue < reqSkillValue)
+        {
+            insufficientSkillNodes++;
+            continue;
+        }
+
+        if (!HasRequiredGatheringTool(skill))
+        {
+            missingToolNodes++;
+            continue;
+        }
+
+        if (!loot.IsLootPossible(bot))
+        {
+            blockedNodes++;
+            continue;
+        }
+
+        if (!CanPathToGatheringNode(bot, go))
+        {
+            unreachableNodes++;
+            continue;
+        }
+
+        float distance = bot->GetExactDist(go);
+        uint32 skillGap = botSkillValue - reqSkillValue;
+        if (skillGap > nearestSkillGap)
+            continue;
+
+        if (skillGap == nearestSkillGap && distance >= nearestDistance)
+            continue;
+
+        nearest = go;
+        nearestDistance = distance;
+        nearestSkillGap = skillGap;
+        nearestReqSkill = reqSkillValue;
+        nearestSkill = skill;
+    }
+
+    if (sPlayerbotAIConfig.debugRpgGathering)
+    {
+        if (nearest)
+        {
+            LOG_DEBUG(
+                "playerbots",
+                "[New RPG][Gather] {} selected {} (entry {}) skill {} botSkill {} reqSkill {} gap {} distance {:.1f}",
+                bot->GetName(), ChatHelper::FormatGameobject(nearest), nearest->GetEntry(), uint32(nearestSkill),
+                GetRpgGatheringSkillValue(nearestSkill), nearestReqSkill, nearestSkillGap, nearestDistance);
+        }
+        else if (consideredNodes > 0)
+        {
+            LOG_DEBUG(
+                "playerbots",
+                "[New RPG][Gather] {} found no suitable nodes in {:.1f}y (considered: {}, non-gathering: {}, unsupported: {}, skill-blocked: {}, tool-blocked: {}, unreachable: {}, blocked: {})",
+                bot->GetName(), searchRadius, consideredNodes, nonGatheringNodes, unsupportedNodes,
+                insufficientSkillNodes, missingToolNodes, unreachableNodes, blockedNodes);
+        }
+    }
+
+    return nearest ? nearest->GetGUID() : ObjectGuid();
+}
+
+bool NewRpgBaseAction::QueueGatheringLoot(ObjectGuid guid)
+{
+    if (!guid)
+        return false;
+
+    LootObject loot(bot, guid);
+    SkillType skill = static_cast<SkillType>(loot.skillId);
+    if (loot.IsEmpty() || !loot.IsLootPossible(bot) || !IsSupportedRpgGatheringSkill(skill))
+        return false;
+
+    AI_VALUE(LootObjectStack*, "available loot")->Add(guid);
+    context->GetValue<LootObject>("loot target")->Set(loot);
+    return true;
+}
+
+bool NewRpgBaseAction::IsSupportedRpgGatheringSkill(SkillType skill) const
+{
+    switch (skill)
+    {
+        case SKILL_HERBALISM:
+        case SKILL_MINING:
+            return true;
+        default:
+            return false;
+    }
+}
+
+uint32 NewRpgBaseAction::GetRpgGatheringSkillValue(SkillType skill) const
+{
+    return botAI->HasSkill(skill) ? uint32(bot->GetSkillValue(skill)) : 0;
+}
+
+bool NewRpgBaseAction::HasRequiredGatheringTool(SkillType skill) const
+{
+    if (skill != SKILL_MINING)
+        return true;
+
+    return bot->HasItemCount(756, 1) || bot->HasItemCount(778, 1) || bot->HasItemCount(1819, 1) ||
+           bot->HasItemCount(1893, 1) || bot->HasItemCount(1959, 1) || bot->HasItemCount(2901, 1) ||
+           bot->HasItemCount(9465, 1) || bot->HasItemCount(20723, 1) || bot->HasItemCount(40772, 1) ||
+           bot->HasItemCount(40892, 1) || bot->HasItemCount(40893, 1);
 }
 
 /// @TODO: Fix redundant code
@@ -1043,6 +1232,14 @@ bool NewRpgBaseAction::RandomChangeStatus(std::vector<NewRpgStatus> candidateSta
             if (pos != WorldPosition())
             {
                 botAI->rpgInfo.ChangeToFarming(pos);
+                if (sPlayerbotAIConfig.debugRpgGathering)
+                {
+                    LOG_DEBUG(
+                        "playerbots",
+                        "[New RPG][Gather] {} entered farming status at Map:{} X:{} Y:{} Z:{} (mining: {}, herbalism: {})",
+                        bot->GetName(), pos.GetMapId(), pos.GetPositionX(), pos.GetPositionY(), pos.GetPositionZ(),
+                        GetRpgGatheringSkillValue(SKILL_MINING), GetRpgGatheringSkillValue(SKILL_HERBALISM));
+                }
                 return true;
             }
             return false;

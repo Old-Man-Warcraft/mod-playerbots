@@ -643,6 +643,10 @@ bool PlayerbotAIConfig::Initialize()
     autoTeleportForLevel = sConfigMgr->GetOption<bool>("AiPlayerbot.AutoTeleportForLevel", false);
     autoDoQuests = sConfigMgr->GetOption<bool>("AiPlayerbot.AutoDoQuests", true);
     enableNewRpgStrategy = sConfigMgr->GetOption<bool>("AiPlayerbot.EnableNewRpgStrategy", true);
+    enableRpgGathering = sConfigMgr->GetOption<bool>("AiPlayerbot.EnableRpgGathering", false);
+    debugRpgGathering = sConfigMgr->GetOption<bool>("AiPlayerbot.DebugRpgGathering", false);
+    rpgGatheringSearchRadius = sConfigMgr->GetOption<float>("AiPlayerbot.RpgGatheringSearchRadius", 150.0f);
+    rpgGatheringSearchDelay = sConfigMgr->GetOption<uint32>("AiPlayerbot.RpgGatheringSearchDelay", 3000);
 
     RpgStatusProbWeight[RPG_WANDER_RANDOM] = sConfigMgr->GetOption<int32>("AiPlayerbot.RpgStatusProbWeight.WanderRandom", 15);
     RpgStatusProbWeight[RPG_WANDER_NPC] = sConfigMgr->GetOption<int32>("AiPlayerbot.RpgStatusProbWeight.WanderNpc", 20);

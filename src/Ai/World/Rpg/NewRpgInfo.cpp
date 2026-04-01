@@ -50,7 +50,9 @@ void NewRpgInfo::ChangeToTravelFlight(ObjectGuid fromFlightMaster, std::vector<u
 void NewRpgInfo::ChangeToFarming(WorldPosition pos)
 {
     startT = getMSTime();
-    data = Farming{pos};
+    Farming farming;
+    farming.pos = pos;
+    data = farming;
 }
 
 void NewRpgInfo::ChangeToRest()
@@ -157,6 +159,8 @@ std::string NewRpgInfo::ToString()
             out << "FARMING";
             out << "\nFarmPos: " << arg.pos.GetMapId() << " " << arg.pos.GetPositionX() << " "
                 << arg.pos.GetPositionY() << " " << arg.pos.GetPositionZ();
+            out << "\nGatherNode: " << arg.gatheringNode.ToString();
+            out << "\nLastGatherSearch: " << (arg.lastGatherSearch ? GetMSTimeDiffToNow(arg.lastGatherSearch) : 0);
             out << "\nlastFarming: " << startT;
         }
         else if constexpr (std::is_same_v<T, TravelFlight>)

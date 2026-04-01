@@ -33,6 +33,11 @@ protected:
     bool MoveWorldObjectTo(ObjectGuid guid, float distance = INTERACTION_DISTANCE);
     bool MoveRandomNear(float moveStep = 50.0f, MovementPriority priority = MovementPriority::MOVEMENT_NORMAL);
     bool ForceToWait(uint32 duration, MovementPriority priority = MovementPriority::MOVEMENT_NORMAL);
+    ObjectGuid FindNearbyGatheringGameObject(float distanceLimit = 0.0f);
+    bool QueueGatheringLoot(ObjectGuid guid);
+    bool IsSupportedRpgGatheringSkill(SkillType skill) const;
+    uint32 GetRpgGatheringSkillValue(SkillType skill) const;
+    bool HasRequiredGatheringTool(SkillType skill) const;
 
     /* QUEST RELATED CHECK */
     ObjectGuid ChooseNpcOrGameObjectToInteract(bool questgiverOnly = false, float distanceLimit = 0.0f);
