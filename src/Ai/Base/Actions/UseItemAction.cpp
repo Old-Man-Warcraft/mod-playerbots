@@ -11,6 +11,52 @@
 #include "ItemUsageValue.h"
 #include "Playerbots.h"
 
+namespace
+{
+bool SpellPrefersSelfTarget(SpellInfo const* spellInfo)
+{
+    if (!spellInfo)
+        return false;
+
+    if (spellInfo->IsPositive())
+        return true;
+
+    for (uint8 i = 0; i < MAX_SPELL_EFFECTS; ++i)
+    {
+        switch (spellInfo->Effects[i].Effect)
+        {
+            case SPELL_EFFECT_SUMMON:
+            case SPELL_EFFECT_SUMMON_PET:
+            case SPELL_EFFECT_SUMMON_OBJECT_WILD:
+            case SPELL_EFFECT_SUMMON_OBJECT_SLOT1:
+            case SPELL_EFFECT_SUMMON_OBJECT_SLOT2:
+            case SPELL_EFFECT_SUMMON_OBJECT_SLOT3:
+            case SPELL_EFFECT_SUMMON_OBJECT_SLOT4:
+                return true;
+            default:
+                break;
+        }
+    }
+
+    return false;
+}
+
+bool ItemPrefersSelfTarget(ItemTemplate const* proto)
+{
+    for (uint8 i = 0; i < MAX_ITEM_PROTO_SPELLS; ++i)
+    {
+        if (!proto->Spells[i].SpellId)
+            continue;
+
+        SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(proto->Spells[i].SpellId);
+        if (SpellPrefersSelfTarget(spellInfo))
+            return true;
+    }
+
+    return false;
+}
+} // namespace
+
 bool UseItemAction::Execute(Event event)
 {
     std::string name = event.getParam();
@@ -75,6 +121,7 @@ bool UseItemAction::UseItem(Item* item, ObjectGuid goGuid, Item* itemTarget, Uni
     uint8 castFlags = 0;
     uint32 targetFlag = TARGET_FLAG_NONE;
     uint32 spellId = 0;
+    bool preferSelfTarget = ItemPrefersSelfTarget(item->GetTemplate());
     for (uint8 i = 0; i < MAX_ITEM_PROTO_SPELLS; ++i)
     {
         if (item->GetTemplate()->Spells[i].SpellId > 0)
@@ -140,7 +187,7 @@ bool UseItemAction::UseItem(Item* item, ObjectGuid goGuid, Item* itemTarget, Uni
 
     Player* master = GetMaster();
     if (!targetSelected && item->GetTemplate()->Class != ITEM_CLASS_CONSUMABLE && master &&
-        botAI->HasActivePlayerMaster() && !selfOnly)
+        botAI->HasActivePlayerMaster() && !selfOnly && !preferSelfTarget)
     {
         if (ObjectGuid masterSelection = master->GetTarget())
         {
