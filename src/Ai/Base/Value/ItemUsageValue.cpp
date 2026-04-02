@@ -150,6 +150,10 @@ ItemUsage ItemUsageValue::Calculate()
         if (ammoUsage != ITEM_USAGE_NONE)
             return ammoUsage;
     }
+
+    if (IsItemUsefulForEngineering(proto))
+        return ITEM_USAGE_USE;
+
     // Need to add something like free bagspace or item value.
     if (proto->SellPrice > 0)
     {
@@ -563,6 +567,27 @@ bool ItemUsageValue::IsItemUsefulForQuest(Player* player, ItemTemplate const* pr
     return false; // Item is not useful for any active quests
 }
 
+bool ItemUsageValue::IsItemUsefulForEngineering(ItemTemplate const* proto)
+{
+    if (!botAI->HasSkill(SKILL_ENGINEERING) || proto->RequiredSkill != SKILL_ENGINEERING)
+        return false;
+
+    if (bot->CanUseItem(proto) != EQUIP_ERR_OK)
+        return false;
+
+    switch (proto->Class)
+    {
+        case ITEM_CLASS_RECIPE:
+        case ITEM_CLASS_REAGENT:
+        case ITEM_CLASS_TRADE_GOODS:
+            return false;
+        default:
+            break;
+    }
+
+    return HasOnUseSpell(proto);
+}
+
 bool ItemUsageValue::IsItemNeededForSkill(ItemTemplate const* proto)
 {
     switch (proto->ItemId)
@@ -807,6 +832,15 @@ float ItemUsageValue::BetterStacks(ItemTemplate const* proto, std::string const 
     }
 
     return stacks;
+}
+
+bool ItemUsageValue::HasOnUseSpell(ItemTemplate const* proto)
+{
+    for (uint8 i = 0; i < MAX_ITEM_PROTO_SPELLS; ++i)
+        if (proto->Spells[i].SpellId && proto->Spells[i].SpellTrigger == ITEM_SPELLTRIGGER_ON_USE)
+            return true;
+
+    return false;
 }
 
 std::vector<uint32> ItemUsageValue::SpellsUsingItem(uint32 itemId, Player* bot)

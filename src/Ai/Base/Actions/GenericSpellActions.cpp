@@ -22,6 +22,38 @@
 
 using ai::buff::MakeAuraQualifierForBuff;
 
+namespace
+{
+bool HasHelpfulTrinketEffect(SpellInfo const* spellInfo)
+{
+    if (!spellInfo)
+        return false;
+
+    if (spellInfo->IsPositive())
+        return true;
+
+    for (uint8 i = 0; i < MAX_SPELL_EFFECTS; ++i)
+    {
+        switch (spellInfo->Effects[i].Effect)
+        {
+            case SPELL_EFFECT_APPLY_AURA:
+            case SPELL_EFFECT_SUMMON:
+            case SPELL_EFFECT_SUMMON_PET:
+            case SPELL_EFFECT_SUMMON_OBJECT_WILD:
+            case SPELL_EFFECT_SUMMON_OBJECT_SLOT1:
+            case SPELL_EFFECT_SUMMON_OBJECT_SLOT2:
+            case SPELL_EFFECT_SUMMON_OBJECT_SLOT3:
+            case SPELL_EFFECT_SUMMON_OBJECT_SLOT4:
+                return true;
+            default:
+                break;
+        }
+    }
+
+    return false;
+}
+} // namespace
+
 CastSpellAction::CastSpellAction(PlayerbotAI* botAI, std::string const spell)
     : Action(botAI, spell), range(botAI->GetRange("spell")), spell(spell)
 {
@@ -349,21 +381,7 @@ bool UseTrinketAction::UseTrinket(Item* item)
             spellId = item->GetTemplate()->Spells[i].SpellId;
             const SpellInfo* spellInfo = sSpellMgr->GetSpellInfo(spellId);
 
-            if (!spellInfo || !spellInfo->IsPositive())
-                return false;
-
-            bool applyAura = false;
-            for (int i = 0; i < MAX_SPELL_EFFECTS; i++)
-            {
-                const SpellEffectInfo& effectInfo = spellInfo->Effects[i];
-                if (effectInfo.Effect == SPELL_EFFECT_APPLY_AURA)
-                {
-                    applyAura = true;
-                    break;
-                }
-            }
-
-            if (!applyAura)
+            if (!HasHelpfulTrinketEffect(spellInfo))
                 return false;
 
             uint32 spellProcFlag = spellInfo->ProcFlags;

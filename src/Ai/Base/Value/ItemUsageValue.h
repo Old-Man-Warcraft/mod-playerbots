@@ -54,6 +54,7 @@ protected:
 private:
     uint32 GetSmallestBagSize();
     bool IsItemUsefulForQuest(Player* player, ItemTemplate const* proto);
+    bool IsItemUsefulForEngineering(ItemTemplate const* proto);
     bool IsItemNeededForSkill(ItemTemplate const* proto);
     bool IsItemUsefulForSkill(ItemTemplate const* proto);
     bool IsItemNeededForUsefullSpell(ItemTemplate const* proto, bool checkAllReagents = false);
@@ -63,6 +64,7 @@ private:
     float BetterStacks(ItemTemplate const* proto, std::string const usageType = "");
 
 public:
+    static bool HasOnUseSpell(ItemTemplate const* proto);
     static std::vector<uint32> SpellsUsingItem(uint32 itemId, Player* bot);
     static bool SpellGivesSkillUp(uint32 spellId, Player* bot);
 
