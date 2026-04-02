@@ -383,6 +383,7 @@ LootObject LootObjectStack::GetNearest(float maxDistance)
 
     LootObject nearest;
     float nearestDistance = std::numeric_limits<float>::max();
+    bool nearestIsProfessionLoot = false;
 
     LootTargetList safeCopy(availableLoot);
     for (LootTargetList::iterator i = safeCopy.begin(); i != safeCopy.end(); i++)
@@ -395,7 +396,7 @@ LootObject LootObjectStack::GetNearest(float maxDistance)
 
         float distance = bot->GetDistance(worldObj);
 
-        if (distance >= nearestDistance || (maxDistance && distance > maxDistance))
+        if (maxDistance && distance > maxDistance)
             continue;
 
         LootObject lootObject(bot, guid);
@@ -403,8 +404,29 @@ LootObject LootObjectStack::GetNearest(float maxDistance)
         if (!lootObject.IsLootPossible(bot))
             continue;
 
+        bool isProfessionLoot = lootObject.skillId != SKILL_NONE;
+
+        if (!nearest.IsEmpty())
+        {
+            if (isProfessionLoot && !nearestIsProfessionLoot &&
+                distance <= nearestDistance + sPlayerbotAIConfig.lootDistance)
+            {
+                nearestDistance = distance;
+                nearest = lootObject;
+                nearestIsProfessionLoot = true;
+                continue;
+            }
+
+            if (!isProfessionLoot && nearestIsProfessionLoot)
+                continue;
+
+            if (distance >= nearestDistance)
+                continue;
+        }
+
         nearestDistance = distance;
         nearest = lootObject;
+        nearestIsProfessionLoot = isProfessionLoot;
     }
 
     return nearest;
