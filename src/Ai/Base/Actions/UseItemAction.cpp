@@ -9,6 +9,7 @@
 #include "Event.h"
 #include "ItemPackets.h"
 #include "ItemUsageValue.h"
+#include "Log.h"
 #include "Playerbots.h"
 
 namespace
@@ -476,10 +477,17 @@ bool UseRandomRecipe::Execute(Event /*event*/)
     if (recipeName.empty())
         return false;
 
+    LOG_DEBUG("playerbots", "Bot {} is using recipe item {}",
+              bot->GetName().c_str(), recipeName);
+
     bool used = UseItemAction::Execute(Event(name, recipeName));
 
     if (used)
+    {
+        LOG_DEBUG("playerbots", "Bot {} successfully used recipe item {}",
+                  bot->GetName().c_str(), recipeName);
         botAI->SetNextCheckDelay(3.0 * IN_MILLISECONDS);
+    }
 
     return used;
 }

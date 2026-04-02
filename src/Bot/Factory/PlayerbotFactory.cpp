@@ -2456,6 +2456,11 @@ void PlayerbotFactory::InitTradeSkills()
 
         sRandomPlayerbotMgr.SetValue(bot, "firstSkill", firstSkill);
         sRandomPlayerbotMgr.SetValue(bot, "secondSkill", secondSkill);
+
+        LOG_DEBUG("playerbots",
+                  "Bot {} selected profession pair {} / {} using {} roll",
+                  bot->GetName().c_str(), firstSkill, secondSkill,
+                  professionRollType == PROFESSION_ROLL_CLASS ? "class" : "random");
     }
 
     SetRandomSkill(SKILL_FIRST_AID);
@@ -2476,7 +2481,16 @@ void PlayerbotFactory::InitTradeSkills()
             continue;
 
         bot->learnSpell(spellId, false);
+
+        LOG_DEBUG("playerbots",
+                  "Bot {} learned profession starter spell {} for skill {}",
+                  bot->GetName().c_str(), spellId, skillId);
     }
+
+    LOG_DEBUG("playerbots",
+              "Bot {} profession setup complete: primary {} / {}, secondary {}, {}, {}",
+              bot->GetName().c_str(), firstSkill, secondSkill, SKILL_FIRST_AID,
+              SKILL_FISHING, SKILL_COOKING);
 }
 
 void PlayerbotFactory::UpdateTradeSkills()
@@ -2621,6 +2635,7 @@ void PlayerbotFactory::InitSkills()
     }
 
     InitTradeSkills();
+    InitInventorySkill();
 
     // switch (bot->getClass())
     // {
@@ -3955,29 +3970,40 @@ void PlayerbotFactory::InitInventory()
 
 void PlayerbotFactory::InitInventorySkill()
 {
-    if (bot->HasSkill(SKILL_MINING))
+    if (bot->HasSkill(SKILL_MINING) && !bot->HasItemCount(2901, 1, true))
     {
         StoreItem(2901, 1);  // Mining Pick
+        LOG_DEBUG("playerbots", "Bot {} restored profession tool: Mining Pick (2901)",
+                  bot->GetName().c_str());
     }
 
-    if (bot->HasSkill(SKILL_BLACKSMITHING) || bot->HasSkill(SKILL_ENGINEERING))
+    if ((bot->HasSkill(SKILL_BLACKSMITHING) || bot->HasSkill(SKILL_ENGINEERING)) &&
+        !bot->HasItemCount(5956, 1, true))
     {
         StoreItem(5956, 1);  // Blacksmith Hammer
+        LOG_DEBUG("playerbots", "Bot {} restored profession tool: Blacksmith Hammer (5956)",
+                  bot->GetName().c_str());
     }
 
-    if (bot->HasSkill(SKILL_ENGINEERING))
+    if (bot->HasSkill(SKILL_ENGINEERING) && !bot->HasItemCount(6219, 1, true))
     {
         StoreItem(6219, 1);  // Arclight Spanner
+        LOG_DEBUG("playerbots", "Bot {} restored profession tool: Arclight Spanner (6219)",
+                  bot->GetName().c_str());
     }
 
-    if (bot->HasSkill(SKILL_ENCHANTING))
+    if (bot->HasSkill(SKILL_ENCHANTING) && !bot->HasItemCount(16207, 1, true))
     {
         StoreItem(16207, 1);  // Runed Arcanite Rod
+        LOG_DEBUG("playerbots", "Bot {} restored profession tool: Runed Arcanite Rod (16207)",
+                  bot->GetName().c_str());
     }
 
-    if (bot->HasSkill(SKILL_SKINNING))
+    if (bot->HasSkill(SKILL_SKINNING) && !bot->HasItemCount(7005, 1, true))
     {
         StoreItem(7005, 1);  // Skinning Knife
+        LOG_DEBUG("playerbots", "Bot {} restored profession tool: Skinning Knife (7005)",
+                  bot->GetName().c_str());
     }
 }
 

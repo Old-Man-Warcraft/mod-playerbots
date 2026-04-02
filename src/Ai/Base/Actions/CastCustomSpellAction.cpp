@@ -8,6 +8,7 @@
 #include "ChatHelper.h"
 #include "Event.h"
 #include "ItemUsageValue.h"
+#include "Log.h"
 #include "Playerbots.h"
 #include "ServerFacade.h"
 
@@ -201,6 +202,7 @@ bool CastRandomSpellAction::Execute(Event event)
 {
     std::vector<std::pair<uint32, std::string>> spellMap = GetSpellList();
     Player* master = GetMaster();
+    std::string const actionName = getName();
 
     Unit* target = nullptr;
     GameObject* got = nullptr;
@@ -292,6 +294,24 @@ bool CastRandomSpellAction::Execute(Event event)
 
         if (isCast)
         {
+            SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
+            if (spellInfo && actionName == "craft random item")
+            {
+                LOG_DEBUG("playerbots",
+                          "Bot {} crafted with spell {} ({}) creating item {}",
+                          bot->GetName().c_str(), spellId, spellInfo->SpellName[0],
+                          spellInfo->Effects[EFFECT_0].ItemType);
+            }
+            else if (spellInfo && actionName == "enchant random item")
+            {
+                Item* itemForSpell = AI_VALUE2(Item*, "item for spell", spellId);
+                LOG_DEBUG("playerbots",
+                          "Bot {} enchanted {} using spell {} ({})",
+                          bot->GetName().c_str(),
+                          itemForSpell ? itemForSpell->GetTemplate()->Name1.c_str() : "unknown item",
+                          spellId, spellInfo->SpellName[0]);
+            }
+
             if (MultiCast && ((wo && bot->HasInArc(CAST_ANGLE_IN_FRONT, wo, sPlayerbotAIConfig.sightDistance))))
             {
                 std::ostringstream cmd;
@@ -369,6 +389,10 @@ bool DisEnchantRandomItemAction::Execute(Event /*event*/)
         if ((botAI->HasRealPlayerMaster() || botAI->IsInRealGuild()) &&
             item->GetTemplate()->Quality > ITEM_QUALITY_UNCOMMON)
             return false;
+
+        LOG_DEBUG("playerbots",
+                  "Bot {} is disenchanting {} ({})",
+                  bot->GetName().c_str(), item->GetTemplate()->Name1.c_str(), item->GetEntry());
 
         if (CastCustomSpellAction::Execute(
                 Event("disenchant random item", "13262 " + chat->FormatQItem(item->GetEntry()))))
