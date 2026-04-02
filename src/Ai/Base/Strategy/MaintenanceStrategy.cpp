@@ -31,6 +31,14 @@ void MaintenanceStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
         new TriggerNode(
             "random",
             {
+                NextAction("craft random item", 1.0f)
+            }
+        )
+    );
+    triggers.push_back(
+        new TriggerNode(
+            "random",
+            {
                 NextAction("disenchant random item", 1.0f)
             }
         )

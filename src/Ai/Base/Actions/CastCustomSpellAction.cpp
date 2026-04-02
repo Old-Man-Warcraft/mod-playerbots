@@ -266,7 +266,13 @@ bool CastRandomSpellAction::Execute(Event event)
 
     std::sort(spellList.begin(), spellList.end(),
               [](std::pair<uint32, std::pair<uint32, WorldObject*>> i,
-                 std::pair<uint32, std::pair<uint32, WorldObject*>> j) { return i.first > j.first; });
+                 std::pair<uint32, std::pair<uint32, WorldObject*>> j)
+              {
+                  if (i.second.first != j.second.first)
+                      return i.second.first > j.second.first;
+
+                  return i.first > j.first;
+              });
 
     uint32 rndBound = spellList.size() / 4;
 
@@ -301,18 +307,29 @@ bool CastRandomSpellAction::Execute(Event event)
 
 bool CraftRandomItemAction::AcceptSpell(SpellInfo const* spellInfo)
 {
-    return spellInfo->Effects[EFFECT_0].Effect == SPELL_EFFECT_CREATE_ITEM && spellInfo->ReagentCount[EFFECT_0] > 0 &&
-           spellInfo->SchoolMask == 0;
+    if (spellInfo->Effects[EFFECT_0].Effect != SPELL_EFFECT_CREATE_ITEM || spellInfo->ReagentCount[EFFECT_0] <= 0 ||
+        spellInfo->SchoolMask != 0)
+        return false;
+
+    uint32 newItemId = spellInfo->Effects[EFFECT_0].ItemType;
+    if (!newItemId)
+        return false;
+
+    ItemUsage usage = AI_VALUE2(ItemUsage, "item usage", std::to_string(newItemId));
+    bool usefulCraft = usage == ITEM_USAGE_REPLACE || usage == ITEM_USAGE_EQUIP || usage == ITEM_USAGE_AMMO ||
+                       usage == ITEM_USAGE_QUEST || usage == ITEM_USAGE_SKILL || usage == ITEM_USAGE_USE;
+
+    return usefulCraft || ItemUsageValue::SpellGivesSkillUp(spellInfo->Id, bot);
 }
 
 uint32 CraftRandomItemAction::GetSpellPriority(SpellInfo const* spellInfo)
 {
-    if (spellInfo->Effects[EFFECT_0].Effect != SPELL_EFFECT_CREATE_ITEM)
+    if (spellInfo->Effects[EFFECT_0].Effect == SPELL_EFFECT_CREATE_ITEM)
     {
         uint32 newItemId = spellInfo->Effects[EFFECT_0].ItemType;
         if (newItemId)
         {
-            ItemUsage usage = AI_VALUE2(ItemUsage, "item usage", newItemId);
+            ItemUsage usage = AI_VALUE2(ItemUsage, "item usage", std::to_string(newItemId));
 
             if (usage == ITEM_USAGE_REPLACE || usage == ITEM_USAGE_EQUIP || usage == ITEM_USAGE_AMMO ||
                 usage == ITEM_USAGE_QUEST || usage == ITEM_USAGE_SKILL || usage == ITEM_USAGE_USE)
@@ -324,6 +341,12 @@ uint32 CraftRandomItemAction::GetSpellPriority(SpellInfo const* spellInfo)
     }
 
     return 1;
+}
+
+bool CraftRandomItemAction::isUseful()
+{
+    return sRandomPlayerbotMgr.IsRandomBot(bot) && !bot->IsInCombat() && !botAI->HasActivePlayerMaster() &&
+           !bot->InBattleground() && !bot->HasUnitState(UNIT_STATE_IN_FLIGHT);
 }
 
 bool CastRandomSpellAction::castSpell(uint32 spellId, WorldObject* wo)
