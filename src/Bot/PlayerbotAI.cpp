@@ -4769,6 +4769,9 @@ bool PlayerbotAI::AllowActive(ActivityType activityType)
 
 bool PlayerbotAI::AllowActivity(ActivityType activityType, bool checkNow)
 {
+    if (remotePaused)
+        return false;
+
     const int activityIndex = static_cast<int>(activityType);
 
     // Unknown/out-of-range avoid blocking, added logging for further analysing should not happen in the first place.
@@ -5207,6 +5210,91 @@ std::string const PlayerbotAI::HandleRemoteCommand(std::string const command)
                 return "unknown";
         }
     }
+    else if (command == "group")
+    {
+        Group* group = bot->GetGroup();
+        if (!group)
+            return "";
+
+        std::ostringstream out;
+        out << group->GetGUID().GetCounter();
+        out << " members=" << group->GetMembersCount();
+
+        if (Player* leader = ObjectAccessor::FindConnectedPlayer(group->GetLeaderGUID()))
+            out << " leader=\"" << leader->GetName() << "\"";
+
+        return out.str();
+    }
+    else if (command == "class")
+    {
+        std::ostringstream out;
+        out << uint32(bot->getClass()) << " |"
+            << ChatHelper::FormatClass(bot->getClass()) << "|";
+        return out.str();
+    }
+    else if (command == "role")
+    {
+        if (IsTank(bot, true))
+            return "tank";
+        if (IsHeal(bot, true))
+            return "heal";
+        if (IsDps(bot, true))
+            return "dps";
+
+        return "none";
+    }
+    else if (command == "master")
+    {
+        Player* botMaster = GetMaster();
+        if (!botMaster || botMaster == bot)
+            return "";
+
+        std::ostringstream out;
+        out << botMaster->GetGUID().GetCounter() << " |"
+            << botMaster->GetName() << "|";
+        return out.str();
+    }
+    else if (command == "map")
+    {
+        std::ostringstream out;
+        out << bot->GetMapId();
+
+        if (Map* map = bot->GetMap())
+            out << " |" << map->GetMapName() << "|";
+
+        return out.str();
+    }
+    else if (command == "zone")
+    {
+        std::ostringstream out;
+        out << bot->GetZoneId();
+
+        if (AreaTableEntry const* zoneEntry =
+                sAreaTableStore.LookupEntry(bot->GetZoneId()))
+            out << " |" << zoneEntry->area_name[0] << "|";
+
+        return out.str();
+    }
+    else if (command == "follow")
+    {
+        std::ostringstream out;
+        out << "follow=" << (HasStrategy("follow", BOT_STATE_NON_COMBAT) ? 1 : 0);
+
+        if (Player* botMaster = GetMaster(); botMaster && botMaster != bot)
+            out << " master=\"" << botMaster->GetName() << "\" distance="
+                << uint32(ServerFacade::instance().GetDistance2d(bot, botMaster));
+
+        return out.str();
+    }
+    else if (command == "mount")
+    {
+        std::ostringstream out;
+        out << "mounted=" << (bot->IsMounted() ? 1 : 0)
+            << " flying=" << (bot->IsFlying() ? 1 : 0)
+            << " swimming=" << (bot->IsInWater() ? 1 : 0)
+            << " taxi=" << (bot->HasUnitState(UNIT_STATE_IN_FLIGHT) ? 1 : 0);
+        return out.str();
+    }
     else if (command == "position")
     {
         std::ostringstream out;
@@ -5266,7 +5354,36 @@ std::string const PlayerbotAI::HandleRemoteCommand(std::string const command)
         out << " / " << pct << "%";
         return out.str();
     }
+    else if (command == "power")
+    {
+        Powers const powerType = bot->getPowerType();
+        uint32 const current = bot->GetPower(powerType);
+        uint32 const maximum = bot->GetMaxPower(powerType);
+        uint32 const pct = maximum ? (current * 100 / maximum) : 0;
+
+        std::ostringstream out;
+        out << uint32(powerType) << " " << current << "/" << maximum << " " << pct << "%";
+        return out.str();
+    }
+    else if (command == "combat")
+    {
+        std::ostringstream out;
+        out << "combat=" << (bot->IsInCombat() ? 1 : 0)
+            << " state=\"" << HandleRemoteCommand("state") << "\""
+            << " hp=\"" << HandleRemoteCommand("hp") << "\""
+            << " power=\"" << HandleRemoteCommand("power") << "\"";
+
+        std::string const targetName = HandleRemoteCommand("target");
+        if (!targetName.empty())
+            out << " target=\"" << targetName << "\"";
+
+        return out.str();
+    }
     else if (command == "strategy")
+    {
+        return currentEngine->ListStrategies();
+    }
+    else if (command == "strategy.active")
     {
         return currentEngine->ListStrategies();
     }
@@ -5274,9 +5391,71 @@ std::string const PlayerbotAI::HandleRemoteCommand(std::string const command)
     {
         return currentEngine->GetLastAction();
     }
+    else if (command == "action.last")
+    {
+        return currentEngine->GetLastAction();
+    }
+    else if (command == "action.queue")
+    {
+        std::ostringstream out;
+        out << "last=\"" << currentEngine->GetLastAction() << "\" queued=unavailable";
+        return out.str();
+    }
     else if (command == "values")
     {
         return GetAiObjectContext()->FormatValues();
+    }
+    else if (command == "state.timers")
+    {
+        std::ostringstream out;
+        out << "next_ai=" << nextAICheckDelay
+            << " react=" << GetReactDelay()
+            << " gcd=" << sPlayerbotAIConfig.globalCoolDown
+            << " passive=" << sPlayerbotAIConfig.passiveDelay
+            << " paused=" << (remotePaused ? 1 : 0);
+        return out.str();
+    }
+    else if (command == "threat")
+    {
+        Unit* target = *GetAiObjectContext()->GetValue<Unit*>("current target");
+        if (!target)
+            return "";
+
+        std::ostringstream out;
+        out << "target=\"" << target->GetName() << "\"";
+        if (Unit* victim = target->GetVictim())
+            out << " victim=\"" << victim->GetName() << "\"";
+        out << " has_aggro=" << (HasAggro(target) ? 1 : 0);
+        return out.str();
+    }
+    else if (command == "auras")
+    {
+        std::ostringstream out;
+        uint32 count = 0;
+        uint32 shown = 0;
+
+        for (auto const& [_, application] : bot->GetAppliedAuras())
+        {
+            ++count;
+            if (shown >= 5)
+                continue;
+
+            Aura const* aura = application->GetBase();
+            if (!aura || !aura->GetSpellInfo())
+                continue;
+
+            if (shown)
+                out << ";";
+
+            out << aura->GetSpellInfo()->SpellName[0];
+            ++shown;
+        }
+
+        std::ostringstream result;
+        result << "count=" << count;
+        if (shown)
+            result << " list=\"" << out.str() << "\"";
+        return result.str();
     }
     else if (command == "travel")
     {
@@ -5319,6 +5498,56 @@ std::string const PlayerbotAI::HandleRemoteCommand(std::string const command)
 
         out << " Retry " << target->getRetryCount(true) << "/" << target->getRetryCount(false);
 
+        return out.str();
+    }
+    else if (command == "travel.short")
+    {
+        TravelTarget* target = GetAiObjectContext()->GetValue<TravelTarget*>("travel target")->Get();
+        std::ostringstream out;
+
+        out << "status=" << target->getStatus();
+        if (target->getDestination())
+            out << " dest=\"" << target->getDestination()->getName() << "\"";
+        out << " retry=" << target->getRetryCount(true) << "/" << target->getRetryCount(false);
+        return out.str();
+    }
+    else if (command == "rpg" || command == "rpg.status")
+    {
+        return rpgInfo.ToString();
+    }
+    else if (command == "quest.summary")
+    {
+        auto const all = GetAllCurrentQuestIds();
+        auto const incomplete = GetCurrentIncompleteQuestIds();
+        std::ostringstream out;
+        out << "active=" << all.size()
+            << " incomplete=" << incomplete.size()
+            << " complete=" << (all.size() >= incomplete.size() ? all.size() - incomplete.size() : 0);
+        return out.str();
+    }
+    else if (command == "loot")
+    {
+        LootObject loot = *GetAiObjectContext()->GetValue<LootObject>("loot target");
+        std::ostringstream out;
+        out << "strategy=" << (HasStrategy("loot", BOT_STATE_NON_COMBAT) ? 1 : 0)
+            << " has_target=" << (!loot.guid.IsEmpty() ? 1 : 0);
+        if (!loot.guid.IsEmpty())
+            out << " guid=" << loot.guid.GetCounter();
+        return out.str();
+    }
+    else if (command == "vendor.intent")
+    {
+        std::ostringstream out;
+        out << "repair_needed=" << (HandleRemoteCommand("repair") != "damaged=0" ? 1 : 0)
+            << " inventory_items=" << GetInventoryItems().size();
+        return out.str();
+    }
+    else if (command == "instance")
+    {
+        std::ostringstream out;
+        out << "instanceable=" << (bot->GetMap() && bot->GetMap()->Instanceable() ? 1 : 0)
+            << " map=" << bot->GetMapId()
+            << " instance=" << bot->GetInstanceId();
         return out.str();
     }
     else if (command == "budget")
@@ -5370,6 +5599,116 @@ std::string const PlayerbotAI::HandleRemoteCommand(std::string const command)
         }
 
         return out.str();
+    }
+    else if (command == "money")
+    {
+        return ChatHelper::formatMoney(bot->GetMoney());
+    }
+    else if (command == "inventory.summary" || command == "consumables")
+    {
+        uint32 totalSlots = INVENTORY_SLOT_ITEM_END - INVENTORY_SLOT_ITEM_START;
+        uint32 usedSlots = 0;
+        uint32 bagSlots = 0;
+
+        for (uint8 slot = INVENTORY_SLOT_ITEM_START; slot < INVENTORY_SLOT_ITEM_END; ++slot)
+        {
+            if (bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot))
+                ++usedSlots;
+        }
+
+        for (uint8 bag = INVENTORY_SLOT_BAG_START; bag < INVENTORY_SLOT_BAG_END; ++bag)
+        {
+            if (Bag* pBag = (Bag*)bot->GetItemByPos(INVENTORY_SLOT_BAG_0, bag))
+            {
+                bagSlots += pBag->GetBagSize();
+                for (uint32 slot = 0; slot < pBag->GetBagSize(); ++slot)
+                {
+                    if (pBag->GetItemByPos(slot))
+                        ++usedSlots;
+                }
+            }
+        }
+
+        totalSlots += bagSlots;
+
+        uint32 potions = 0;
+        uint32 food = 0;
+        uint32 drink = 0;
+        uint32 bandages = 0;
+        for (Item* item : GetInventoryItems())
+        {
+            ItemTemplate const* proto = item ? item->GetTemplate() : nullptr;
+            if (!proto)
+                continue;
+
+            if (proto->Class == ITEM_CLASS_CONSUMABLE)
+            {
+                if (proto->SubClass == ITEM_SUBCLASS_POTION)
+                    potions += item->GetCount();
+                else if (proto->SubClass == ITEM_SUBCLASS_FOOD)
+                {
+                    if (proto->Spells[0].SpellCategory == 11)
+                        drink += item->GetCount();
+                    else
+                        food += item->GetCount();
+                }
+                else if (proto->SubClass == ITEM_SUBCLASS_BANDAGE)
+                    bandages += item->GetCount();
+            }
+        }
+
+        std::ostringstream out;
+        out << "slots=" << usedSlots << "/" << totalSlots;
+        out << " food=" << food;
+        out << " drink=" << drink;
+        out << " potions=" << potions;
+        out << " bandages=" << bandages;
+
+        if (command == "consumables")
+            out << " ammo=" << (FindAmmo() ? FindAmmo()->GetCount() : 0);
+
+        return out.str();
+    }
+    else if (command == "gear.summary")
+    {
+        std::ostringstream out;
+        out << "gear_score=" << GetEquipGearScore(bot)
+            << " mixed_gear_score=" << GetMixedGearScore(bot, true, false, 12);
+        return out.str();
+    }
+    else if (command == "repair")
+    {
+        uint32 damaged = 0;
+        for (uint8 slot = EQUIPMENT_SLOT_START; slot < EQUIPMENT_SLOT_END; ++slot)
+        {
+            if (Item* item = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot))
+            {
+                uint32 maxDurability = item->GetUInt32Value(ITEM_FIELD_MAXDURABILITY);
+                uint32 durability = item->GetUInt32Value(ITEM_FIELD_DURABILITY);
+                if (maxDurability && durability < maxDurability)
+                    ++damaged;
+            }
+        }
+
+        std::ostringstream out;
+        out << "damaged=" << damaged;
+        return out.str();
+    }
+    else if (command == "debug.flags")
+    {
+        std::ostringstream out;
+        out << "paused=" << (remotePaused ? 1 : 0)
+            << " active=" << (AllowActivity(ALL_ACTIVITY, true) ? 1 : 0)
+            << " debug_strategy=" << (HasStrategy("debug", BOT_STATE_NON_COMBAT) ? 1 : 0);
+        return out.str();
+    }
+    else if (command == "errors")
+    {
+        return "not available";
+    }
+    else if (command == "log.tail")
+    {
+        return "not available";
     }
 
     std::ostringstream out;

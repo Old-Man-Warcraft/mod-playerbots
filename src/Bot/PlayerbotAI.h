@@ -549,6 +549,8 @@ public:
     bool HasManyPlayersNearby(uint32 trigerrValue = 20, float range = sPlayerbotAIConfig.sightDistance);
     bool AllowActive(ActivityType activityType);
     bool AllowActivity(ActivityType activityType = ALL_ACTIVITY, bool checkNow = false);
+    void SetRemotePaused(bool paused) { remotePaused = paused; }
+    bool IsRemotePaused() const { return remotePaused; }
     uint32 AutoScaleActivity(uint32 mod);
 
     // Check if player is safe to use.
@@ -649,6 +651,7 @@ protected:
     BotCheatMask cheatMask = BotCheatMask::none;
     Position jumpDestination = Position();
     uint32 nextTransportCheck = 0;
+    bool remotePaused = false;
 };
 
 #endif

@@ -8,10 +8,12 @@
 #include <WorldSessionMgr.h>
 
 #include <algorithm>
+#include <cctype>
 #include <boost/thread/thread.hpp>
 #include <cstdlib>
 #include <ctime>
 #include <iomanip>
+#include <limits>
 #include <random>
 
 #include "AiFactory.h"
@@ -28,7 +30,9 @@
 #include "MapMgr.h"
 #include "NewRpgInfo.h"
 #include "NewRpgStrategy.h"
+#include "ObjectAccessor.h"
 #include "ObjectGuid.h"
+#include "ObjectMgr.h"
 #include "PerfMonitor.h"
 #include "Player.h"
 #include "PlayerbotAI.h"
@@ -44,6 +48,7 @@
 #include "TravelMgr.h"
 #include "Unit.h"
 #include "World.h"
+#include "PlayerbotWorldThreadProcessor.h"
 #include "Cell.h"
 #include "GridNotifiers.h"
 #include "CellImpl.h"
@@ -55,6 +60,562 @@ struct GuidClassRaceInfo
     uint32 rClass;
     uint32 rRace;
 };
+
+namespace
+{
+struct RemoteCommandRequest
+{
+    std::string authToken;
+    std::string command;
+    std::string argument;
+};
+
+enum class RemoteBotControlAction
+{
+    Reset,
+    Refresh,
+    Revive,
+    StrategyAdd,
+    StrategyRemove,
+    StrategySet,
+    RoleSet,
+    TravelClear,
+    TravelRetry,
+    FollowMaster,
+    Stay,
+    Stop,
+    AttackTarget,
+    AssistMaster,
+    LootMode,
+    Pause,
+    Resume,
+    ChangeStrategy,
+    Teleport,
+    Update,
+};
+
+std::string TrimCopy(std::string const& value)
+{
+    std::string::size_type start = 0;
+    while (start < value.length() &&
+           std::isspace(static_cast<unsigned char>(value[start])))
+        ++start;
+
+    std::string::size_type end = value.length();
+    while (end > start &&
+           std::isspace(static_cast<unsigned char>(value[end - 1])))
+        --end;
+
+    return value.substr(start, end - start);
+}
+
+RemoteCommandRequest ParseRemoteCommandRequest(std::string const& request)
+{
+    std::string trimmed = TrimCopy(request);
+
+    RemoteCommandRequest parsed;
+    if (trimmed.rfind("auth=", 0) == 0)
+    {
+        std::string::size_type authEnd = trimmed.find(';');
+        if (authEnd != std::string::npos)
+        {
+            parsed.authToken = TrimCopy(trimmed.substr(5, authEnd - 5));
+            trimmed = TrimCopy(trimmed.substr(authEnd + 1));
+        }
+    }
+
+    std::string::size_type splitPos = trimmed.find(',');
+
+    if (splitPos == std::string::npos)
+        splitPos = trimmed.find_first_of(" \t");
+
+    if (splitPos == std::string::npos)
+    {
+        parsed.command = trimmed;
+        return parsed;
+    }
+
+    parsed.command = TrimCopy(trimmed.substr(0, splitPos));
+    parsed.argument = TrimCopy(trimmed.substr(splitPos + 1));
+    return parsed;
+}
+
+bool StartsWith(std::string const& value, std::string const& prefix)
+{
+    return value.rfind(prefix, 0) == 0;
+}
+
+std::vector<std::string> SplitArguments(std::string const& value)
+{
+    std::vector<std::string> parts;
+    std::istringstream in(value);
+    std::string part;
+    while (in >> part)
+        parts.push_back(part);
+    return parts;
+}
+
+std::vector<std::string> SplitCommaSeparated(std::string const& value)
+{
+    std::vector<std::string> parts;
+    std::string current;
+    std::istringstream in(value);
+    while (std::getline(in, current, ','))
+    {
+        current = TrimCopy(current);
+        if (!current.empty())
+            parts.push_back(current);
+    }
+    return parts;
+}
+
+std::string NormalizeStrategyDelta(std::string const& value, char op)
+{
+    std::ostringstream out;
+    bool first = true;
+    for (std::string part : SplitCommaSeparated(value))
+    {
+        if (part.empty())
+            continue;
+
+        if (part[0] != '+' && part[0] != '-')
+            part.insert(part.begin(), op);
+
+        if (!first)
+            out << ',';
+        out << part;
+        first = false;
+    }
+
+    return out.str();
+}
+
+bool TryParsePercentage(std::string const& text, uint8& value)
+{
+    ObjectGuid::LowType parsed = 0;
+    if (!TryParseBotGuid(text, parsed) || parsed > 100)
+        return false;
+
+    value = static_cast<uint8>(parsed);
+    return true;
+}
+
+bool TryParseBotGuid(std::string const& text, ObjectGuid::LowType& guid)
+{
+    if (text.empty())
+        return false;
+
+    char* end = nullptr;
+    unsigned long const value = std::strtoul(text.c_str(), &end, 10);
+    if (end == text.c_str())
+        return false;
+
+    while (*end && std::isspace(static_cast<unsigned char>(*end)))
+        ++end;
+
+    if (*end)
+        return false;
+
+    if (value > std::numeric_limits<ObjectGuid::LowType>::max())
+        return false;
+
+    guid = static_cast<ObjectGuid::LowType>(value);
+    return true;
+}
+
+bool TryResolveBotGuid(std::string const& selector,
+                       ObjectGuid::LowType& guid)
+{
+    std::string const trimmed = TrimCopy(selector);
+    if (trimmed.empty())
+        return false;
+
+    if (TryParseBotGuid(trimmed, guid))
+        return true;
+
+    if (trimmed.rfind("guid=", 0) == 0)
+        return TryParseBotGuid(TrimCopy(trimmed.substr(5)), guid);
+
+    std::string name = trimmed;
+    if (trimmed.rfind("name=", 0) == 0)
+        name = TrimCopy(trimmed.substr(5));
+
+    if (name.empty() || !normalizePlayerName(name))
+        return false;
+
+    ObjectGuid charGuid = sCharacterCache->GetCharacterGuidByName(name);
+    if (!charGuid)
+        return false;
+
+    guid = charGuid.GetCounter();
+    return true;
+}
+
+std::string NormalizeBotCommand(std::string const& command)
+{
+    if (command == "bot.state")
+        return "state";
+    if (command == "bot.class")
+        return "class";
+    if (command == "bot.role")
+        return "role";
+    if (command == "bot.master")
+        return "master";
+    if (command == "bot.map")
+        return "map";
+    if (command == "bot.zone")
+        return "zone";
+    if (command == "bot.position")
+        return "position";
+    if (command == "bot.group")
+        return "group";
+    if (command == "bot.follow")
+        return "follow";
+    if (command == "bot.mount")
+        return "mount";
+    if (command == "bot.target")
+        return "target";
+    if (command == "bot.target.pos")
+        return "tpos";
+    if (command == "bot.movement")
+        return "movement";
+    if (command == "bot.hp")
+        return "hp";
+    if (command == "bot.power")
+        return "power";
+    if (command == "bot.combat")
+        return "combat";
+    if (command == "bot.strategy")
+        return "strategy";
+    if (command == "bot.strategy.active")
+        return "strategy.active";
+    if (command == "bot.action")
+        return "action";
+    if (command == "bot.action.last")
+        return "action.last";
+    if (command == "bot.action.queue")
+        return "action.queue";
+    if (command == "bot.values")
+        return "values";
+    if (command == "bot.travel")
+        return "travel";
+    if (command == "bot.travel.short")
+        return "travel.short";
+    if (command == "bot.state.timers")
+        return "state.timers";
+    if (command == "bot.threat")
+        return "threat";
+    if (command == "bot.auras")
+        return "auras";
+    if (command == "bot.rpg")
+        return "rpg";
+    if (command == "bot.rpg.status")
+        return "rpg.status";
+    if (command == "bot.quest.summary")
+        return "quest.summary";
+    if (command == "bot.loot")
+        return "loot";
+    if (command == "bot.vendor.intent")
+        return "vendor.intent";
+    if (command == "bot.instance")
+        return "instance";
+    if (command == "bot.money")
+        return "money";
+    if (command == "bot.inventory.summary")
+        return "inventory.summary";
+    if (command == "bot.gear.summary")
+        return "gear.summary";
+    if (command == "bot.repair")
+        return "repair";
+    if (command == "bot.consumables")
+        return "consumables";
+    if (command == "bot.debug.flags")
+        return "debug.flags";
+    if (command == "bot.errors")
+        return "errors";
+    if (command == "bot.log.tail")
+        return "log.tail";
+    if (command == "bot.budget")
+        return "budget";
+
+    return command;
+}
+
+bool IsBotScopedCommand(std::string const& command)
+{
+    return command == "state" || command == "class" ||
+           command == "role" || command == "master" ||
+           command == "map" || command == "zone" ||
+           command == "group" || command == "follow" ||
+           command == "mount" || command == "position" ||
+           command == "tpos" || command == "movement" ||
+           command == "target" || command == "hp" ||
+           command == "power" || command == "combat" ||
+           command == "strategy" || command == "strategy.active" ||
+           command == "action" || command == "action.last" ||
+           command == "action.queue" || command == "values" ||
+           command == "travel" || command == "travel.short" ||
+           command == "state.timers" || command == "threat" ||
+           command == "auras" || command == "rpg" ||
+           command == "rpg.status" || command == "quest.summary" ||
+           command == "loot" || command == "vendor.intent" ||
+           command == "instance" || command == "money" ||
+           command == "inventory.summary" ||
+           command == "gear.summary" || command == "repair" ||
+           command == "consumables" || command == "debug.flags" ||
+           command == "errors" || command == "log.tail" ||
+           command == "budget" || command == "bot.info";
+}
+
+bool IsTier2Command(std::string const& command)
+{
+    return command == "bot.reset" || command == "bot.refresh" ||
+           command == "bot.revive" || command == "bot.strategy.add" ||
+           command == "bot.strategy.remove" ||
+           command == "bot.strategy.set" ||
+           command == "bot.role.set" ||
+           command == "bot.travel.clear" ||
+           command == "bot.travel.retry" ||
+           command == "bot.follow.master" ||
+           command == "bot.stay" || command == "bot.stop" ||
+           command == "bot.attack.target" ||
+           command == "bot.assist.master" ||
+           command == "bot.loot.mode" || command == "bot.pause" ||
+           command == "bot.resume" || StartsWith(command, "group.") ||
+           StartsWith(command, "rnd.");
+}
+
+std::string GetTier2AccessError(RemoteCommandRequest const& parsed,
+                                std::string const& command)
+{
+    if (!IsTier2Command(command))
+        return "";
+
+    if (!sPlayerbotAIConfig.commandServerTier2Enabled)
+        return "tier2 disabled";
+
+    if (sPlayerbotAIConfig.commandServerAuthToken.empty())
+        return "tier2 unavailable";
+
+    if (parsed.authToken != sPlayerbotAIConfig.commandServerAuthToken)
+        return "access denied";
+
+    return "";
+}
+
+std::string FormatCommandPortCapabilities()
+{
+    return "api=2 selectors=<guid>|guid=<guid>|name=<name> tier2=auth-prefix(auth=<token>;) commands="
+           "ping,version,capabilities,bot.list,bot.count,bot.types,bot.find <selector>,"
+           "bot.info <selector>,bot.state <selector>,bot.class <selector>,bot.role <selector>,"
+           "bot.master <selector>,bot.group <selector>,bot.map <selector>,bot.zone <selector>,"
+           "bot.follow <selector>,bot.mount <selector>,bot.position <selector>,bot.distance <a> <b>,"
+           "bot.target <selector>,bot.target.pos <selector>,bot.movement <selector>,bot.hp <selector>,"
+           "bot.power <selector>,bot.combat <selector>,bot.strategy <selector>,bot.strategy.active <selector>,"
+           "bot.action <selector>,bot.action.last <selector>,bot.action.queue <selector>,"
+           "bot.values <selector>|bot.values key=<name> <selector>,bot.travel <selector>,"
+           "bot.travel.short <selector>,bot.state.timers <selector>,bot.threat <selector>,"
+           "bot.auras <selector>,bot.rpg <selector>,bot.rpg.status <selector>,"
+           "bot.quest.summary <selector>,bot.loot <selector>,bot.vendor.intent <selector>,"
+           "bot.instance <selector>,bot.money <selector>,bot.inventory.summary <selector>,"
+           "bot.gear.summary <selector>,bot.repair <selector>,bot.consumables <selector>,"
+           "bot.debug.flags <selector>,bot.errors <selector>,bot.log.tail <selector>,bot.budget <selector>,"
+           "[auth]bot.reset,[auth]bot.refresh,[auth]bot.revive,[auth]bot.strategy.add/remove/set,"
+           "[auth]bot.role.set,[auth]bot.travel.clear/retry,[auth]bot.follow.master,[auth]bot.stay,"
+           "[auth]bot.stop,[auth]bot.attack.target,[auth]bot.assist.master,[auth]bot.loot.mode,"
+           "[auth]bot.pause,[auth]bot.resume,[auth]group.members,[auth]group.status,"
+           "[auth]group.strategy.set,[auth]group.follow.master,[auth]group.pause,[auth]group.resume,"
+           "[auth]rnd.stats,[auth]rnd.map.distribution,[auth]rnd.refresh,[auth]rnd.change_strategy,"
+           "[auth]rnd.teleport,[auth]rnd.revive,[auth]rnd.update,[auth]rnd.activity.set";
+}
+
+std::vector<Player*> GetOnlineBotsByGroupId(RandomPlayerbotMgr& mgr,
+                                            uint32 groupId)
+{
+    std::vector<Player*> result;
+    for (auto const& [guid, bot] : mgr.GetPlayerBots())
+    {
+        if (!bot || !bot->GetGroup())
+            continue;
+
+        if (bot->GetGroup()->GetGUID().GetCounter() == groupId)
+            result.push_back(bot);
+    }
+
+    return result;
+}
+
+bool ApplyRemoteBotControl(Player* bot, RemoteBotControlAction action,
+                           std::string const& value)
+{
+    if (!bot)
+        return false;
+
+    PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
+    if (!botAI)
+        return false;
+
+    switch (action)
+    {
+        case RemoteBotControlAction::Reset:
+            botAI->Reset(true);
+            return true;
+        case RemoteBotControlAction::Refresh:
+        {
+            PlayerbotFactory factory(bot, bot->GetLevel(), ITEM_QUALITY_NORMAL);
+            factory.Refresh();
+            botAI->Reset(true);
+            return true;
+        }
+        case RemoteBotControlAction::Revive:
+            if (bot->isDead())
+            {
+                bot->ResurrectPlayer(1.0f);
+                bot->SpawnCorpseBones();
+            }
+            botAI->Reset(true);
+            return true;
+        case RemoteBotControlAction::StrategyAdd:
+        {
+            std::string const normalized = NormalizeStrategyDelta(value, '+');
+            if (normalized.empty())
+                return false;
+            botAI->ChangeStrategy(normalized, BOT_STATE_COMBAT);
+            botAI->ChangeStrategy(normalized, BOT_STATE_NON_COMBAT);
+            return true;
+        }
+        case RemoteBotControlAction::StrategyRemove:
+        {
+            std::string const normalized = NormalizeStrategyDelta(value, '-');
+            if (normalized.empty())
+                return false;
+            botAI->ChangeStrategy(normalized, BOT_STATE_COMBAT);
+            botAI->ChangeStrategy(normalized, BOT_STATE_NON_COMBAT);
+            return true;
+        }
+        case RemoteBotControlAction::StrategySet:
+        {
+            botAI->ClearStrategies(BOT_STATE_COMBAT);
+            botAI->ClearStrategies(BOT_STATE_NON_COMBAT);
+            std::string const normalized = NormalizeStrategyDelta(value, '+');
+            if (!normalized.empty())
+            {
+                botAI->ChangeStrategy(normalized, BOT_STATE_COMBAT);
+                botAI->ChangeStrategy(normalized, BOT_STATE_NON_COMBAT);
+            }
+            return true;
+        }
+        case RemoteBotControlAction::RoleSet:
+        {
+            std::string const role = TrimCopy(value);
+            if (role != "tank" && role != "heal" && role != "dps")
+                return false;
+
+            botAI->ChangeStrategy("-tank,-heal,-dps", BOT_STATE_COMBAT);
+            botAI->ChangeStrategy("+" + role, BOT_STATE_COMBAT);
+            return true;
+        }
+        case RemoteBotControlAction::TravelClear:
+            TravelMgr::setNullTravelTarget(bot);
+            botAI->Reset(false);
+            return true;
+        case RemoteBotControlAction::TravelRetry:
+        {
+            TravelTarget* target = botAI->GetAiObjectContext()->GetValue<TravelTarget*>("travel target")->Get();
+            target->setStatus(TRAVEL_STATUS_TRAVEL);
+            target->setRetry(true, 0);
+            target->setRetry(false, 0);
+            botAI->Reset(false);
+            return true;
+        }
+        case RemoteBotControlAction::FollowMaster:
+            botAI->ChangeStrategy("-stay,+follow", BOT_STATE_NON_COMBAT);
+            botAI->ChangeStrategy("-stay,+follow", BOT_STATE_COMBAT);
+            return true;
+        case RemoteBotControlAction::Stay:
+            botAI->ChangeStrategy("-follow,+stay", BOT_STATE_NON_COMBAT);
+            botAI->ChangeStrategy("-follow,+stay", BOT_STATE_COMBAT);
+            return true;
+        case RemoteBotControlAction::Stop:
+            bot->AttackStop();
+            bot->StopMoving();
+            botAI->Reset(false);
+            return true;
+        case RemoteBotControlAction::AttackTarget:
+        {
+            Unit* target = *botAI->GetAiObjectContext()->GetValue<Unit*>("current target");
+            if (!target)
+                return false;
+
+            bot->SetTarget(target->GetGUID());
+            return botAI->DoSpecificAction("attack", Event(), true);
+        }
+        case RemoteBotControlAction::AssistMaster:
+        {
+            Player* master = botAI->GetMaster();
+            if (!master)
+                return false;
+
+            Unit* target = ObjectAccessor::GetUnit(*master, master->GetTarget());
+            if (!target)
+                return false;
+
+            bot->SetTarget(target->GetGUID());
+            botAI->GetAiObjectContext()->GetValue<ObjectGuid>("attack target")->Set(target->GetGUID());
+            return botAI->DoSpecificAction("attack", Event(), true);
+        }
+        case RemoteBotControlAction::LootMode:
+            botAI->ChangeStrategy(TrimCopy(value) == "off" ? "-loot" : "+loot",
+                                  BOT_STATE_NON_COMBAT);
+            return true;
+        case RemoteBotControlAction::Pause:
+            botAI->SetRemotePaused(true);
+            return true;
+        case RemoteBotControlAction::Resume:
+            botAI->SetRemotePaused(false);
+            botAI->Reset(false);
+            return true;
+        case RemoteBotControlAction::ChangeStrategy:
+            sRandomPlayerbotMgr.ChangeStrategyOnce(bot);
+            return true;
+        case RemoteBotControlAction::Teleport:
+            sRandomPlayerbotMgr.RandomTeleportForLevel(bot);
+            botAI->Reset(true);
+            return true;
+        case RemoteBotControlAction::Update:
+            botAI->Reset(false);
+            return true;
+    }
+
+    return false;
+}
+
+class RemoteBotControlOperation : public PlayerbotOperation
+{
+public:
+    RemoteBotControlOperation(ObjectGuid botGuid, RemoteBotControlAction action,
+                              std::string payload = "")
+        : m_botGuid(botGuid), m_action(action), m_payload(std::move(payload))
+    {
+    }
+
+    bool Execute() override
+    {
+        Player* bot = sRandomPlayerbotMgr.GetPlayerBot(m_botGuid);
+        return ApplyRemoteBotControl(bot, m_action, m_payload);
+    }
+
+    ObjectGuid GetBotGuid() const override { return m_botGuid; }
+    uint32 GetPriority() const override { return 30; }
+    std::string GetName() const override { return "RemoteBotControlOperation"; }
+    bool IsValid() const override { return sRandomPlayerbotMgr.GetPlayerBot(m_botGuid) != nullptr; }
+
+private:
+    ObjectGuid m_botGuid;
+    RemoteBotControlAction m_action;
+    std::string m_payload;
+};
+} // namespace
 
 void PrintStatsThread() { sRandomPlayerbotMgr.PrintStats(); }
 
@@ -2942,16 +3503,444 @@ uint32 RandomPlayerbotMgr::GetTradeDiscount(Player* bot, Player* master)
 
 std::string const RandomPlayerbotMgr::HandleRemoteCommand(std::string const request)
 {
-    std::string::const_iterator pos = std::find(request.begin(), request.end(), ',');
-    if (pos == request.end())
+    RemoteCommandRequest const parsed = ParseRemoteCommandRequest(request);
+    std::string const command = NormalizeBotCommand(parsed.command);
+
+    auto queueBotOperation = [&](Player* bot, RemoteBotControlAction action,
+                                 std::string const& payload = "") -> std::string
+    {
+        if (!bot)
+            return "invalid guid";
+
+        bool const queued = PlayerbotWorldThreadProcessor::instance().QueueOperation(
+            std::make_unique<RemoteBotControlOperation>(bot->GetGUID(), action, payload));
+        return queued ? "queued" : "queue full";
+    };
+
+    auto queueBotSet = [&](std::vector<Player*> const& bots,
+                           RemoteBotControlAction action,
+                           std::string const& payload = "") -> std::string
+    {
+        uint32 queuedCount = 0;
+        for (Player* bot : bots)
+        {
+            if (!bot)
+                continue;
+
+            if (PlayerbotWorldThreadProcessor::instance().QueueOperation(
+                    std::make_unique<RemoteBotControlOperation>(bot->GetGUID(), action, payload)))
+                ++queuedCount;
+        }
+
+        std::ostringstream out;
+        out << "queued=" << queuedCount;
+        return out.str();
+    };
+
+    if (command.empty())
     {
         std::ostringstream out;
         out << "invalid request: " << request;
         return out.str();
     }
 
-    std::string const command = std::string(request.begin(), pos);
-    ObjectGuid guid = ObjectGuid::Create<HighGuid::Player>(atoi(std::string(pos + 1, request.end()).c_str()));
+    if (command == "ping")
+        return "pong";
+
+    if (command == "version")
+        return "mod-playerbots command-port api=1";
+
+    if (command == "capabilities")
+        return FormatCommandPortCapabilities();
+
+    if (std::string const accessError = GetTier2AccessError(parsed, parsed.command);
+        !accessError.empty())
+        return accessError;
+
+    if (command == "bot.list")
+    {
+        std::ostringstream out;
+        bool first = true;
+
+        for (auto const& [guid, bot] : playerBots)
+        {
+            if (!bot)
+                continue;
+
+            if (!first)
+                out << ";";
+
+            out << bot->GetGUID().GetCounter() << ":" << bot->GetName();
+            first = false;
+        }
+
+        return out.str();
+    }
+
+    if (command == "bot.count")
+    {
+        uint32 total = 0;
+        uint32 random = 0;
+        uint32 addClass = 0;
+        uint32 alt = 0;
+
+        for (auto const& [guid, bot] : playerBots)
+        {
+            if (!bot)
+                continue;
+
+            ++total;
+
+            if (IsRandomBot(bot))
+                ++random;
+            else if (IsAddclassBot(bot))
+                ++addClass;
+            else
+                ++alt;
+        }
+
+        std::ostringstream out;
+        out << "online=" << total << " random=" << random
+            << " addclass=" << addClass << " alt=" << alt;
+        return out.str();
+    }
+
+    if (command == "bot.types")
+    {
+        uint32 total = 0;
+        uint32 random = 0;
+        uint32 addClass = 0;
+        uint32 alt = 0;
+        uint32 alliance = 0;
+        uint32 horde = 0;
+        uint32 grouped = 0;
+
+        for (auto const& [guid, bot] : playerBots)
+        {
+            if (!bot)
+                continue;
+
+            ++total;
+            if (IsRandomBot(bot))
+                ++random;
+            else if (IsAddclassBot(bot))
+                ++addClass;
+            else
+                ++alt;
+
+            if (bot->GetTeamId() == TEAM_ALLIANCE)
+                ++alliance;
+            else
+                ++horde;
+
+            if (bot->GetGroup())
+                ++grouped;
+        }
+
+        std::ostringstream out;
+        out << "online=" << total << " random=" << random
+            << " addclass=" << addClass << " alt=" << alt
+            << " alliance=" << alliance << " horde=" << horde
+            << " grouped=" << grouped;
+        return out.str();
+    }
+
+    if (command == "bot.find")
+    {
+        ObjectGuid::LowType guidLow = 0;
+        if (!TryResolveBotGuid(parsed.argument, guidLow))
+            return "invalid guid";
+
+        ObjectGuid guid = ObjectGuid::Create<HighGuid::Player>(guidLow);
+        Player* bot = GetPlayerBot(guid);
+        if (!bot)
+            return "invalid guid";
+
+        std::ostringstream out;
+        out << "guid=" << bot->GetGUID().GetCounter();
+        out << " name=\"" << bot->GetName() << "\"";
+        return out.str();
+    }
+
+    if (command == "bot.distance")
+    {
+        std::vector<std::string> const args = SplitArguments(parsed.argument);
+        if (args.size() < 2)
+            return "invalid guid";
+
+        ObjectGuid::LowType leftGuid = 0;
+        ObjectGuid::LowType rightGuid = 0;
+        if (!TryResolveBotGuid(args[0], leftGuid) || !TryResolveBotGuid(args[1], rightGuid))
+            return "invalid guid";
+
+        Player* left = GetPlayerBot(ObjectGuid::Create<HighGuid::Player>(leftGuid));
+        Player* right = GetPlayerBot(ObjectGuid::Create<HighGuid::Player>(rightGuid));
+        if (!left || !right)
+            return "invalid guid";
+
+        std::ostringstream out;
+        out << ServerFacade::instance().GetDistance2d(left, right);
+        return out.str();
+    }
+
+    if (command == "group.members" || command == "group.status")
+    {
+        ObjectGuid::LowType groupId = 0;
+        if (!TryParseBotGuid(parsed.argument, groupId))
+            return "invalid group";
+
+        std::vector<Player*> const bots = GetOnlineBotsByGroupId(*this, groupId);
+        if (bots.empty())
+            return "invalid group";
+
+        if (command == "group.members")
+        {
+            std::ostringstream out;
+            bool first = true;
+            for (Player* bot : bots)
+            {
+                if (!first)
+                    out << ";";
+                out << bot->GetGUID().GetCounter() << ":" << bot->GetName();
+                first = false;
+            }
+            return out.str();
+        }
+
+        Group* group = bots.front()->GetGroup();
+        std::ostringstream out;
+        out << "id=" << groupId << " members=" << bots.size();
+        if (group)
+        {
+            if (Player* leader = ObjectAccessor::FindConnectedPlayer(group->GetLeaderGUID()))
+                out << " leader=\"" << leader->GetName() << "\"";
+        }
+
+        uint32 combat = 0;
+        uint32 dead = 0;
+        for (Player* bot : bots)
+        {
+            if (bot->IsInCombat())
+                ++combat;
+            if (bot->isDead())
+                ++dead;
+        }
+
+        out << " combat=" << combat << " dead=" << dead;
+        return out.str();
+    }
+
+    if (command == "rnd.stats")
+    {
+        uint32 random = 0;
+        uint32 combat = 0;
+        uint32 dead = 0;
+        uint32 paused = 0;
+
+        for (auto const& [guid, bot] : playerBots)
+        {
+            if (!bot || !IsRandomBot(bot))
+                continue;
+
+            ++random;
+            if (bot->IsInCombat())
+                ++combat;
+            if (bot->isDead())
+                ++dead;
+            if (PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot); botAI && botAI->IsRemotePaused())
+                ++paused;
+        }
+
+        std::ostringstream out;
+        out << "random=" << random << " combat=" << combat
+            << " dead=" << dead << " paused=" << paused;
+        return out.str();
+    }
+
+    if (command == "rnd.map.distribution")
+    {
+        std::map<uint32, uint32> counts;
+        for (auto const& [guid, bot] : playerBots)
+        {
+            if (!bot || !IsRandomBot(bot))
+                continue;
+            counts[bot->GetMapId()]++;
+        }
+
+        std::ostringstream out;
+        bool first = true;
+        for (auto const& [mapId, count] : counts)
+        {
+            if (!first)
+                out << ";";
+            out << mapId << '=' << count;
+            first = false;
+        }
+        return out.str();
+    }
+
+    if (command == "group.strategy.set" || command == "group.follow.master" ||
+        command == "group.pause" || command == "group.resume")
+    {
+        std::vector<std::string> const args = SplitArguments(parsed.argument);
+        if (args.empty())
+            return "invalid group";
+
+        ObjectGuid::LowType groupId = 0;
+        if (!TryParseBotGuid(args[0], groupId))
+            return "invalid group";
+
+        std::vector<Player*> const bots = GetOnlineBotsByGroupId(*this, groupId);
+        if (bots.empty())
+            return "invalid group";
+
+        if (command == "group.follow.master")
+            return queueBotSet(bots, RemoteBotControlAction::FollowMaster);
+        if (command == "group.pause")
+            return queueBotSet(bots, RemoteBotControlAction::Pause);
+        if (command == "group.resume")
+            return queueBotSet(bots, RemoteBotControlAction::Resume);
+
+        std::string strategy = parsed.argument.substr(parsed.argument.find(args[0]) + args[0].length());
+        strategy = TrimCopy(strategy);
+        if (strategy.empty())
+            return "invalid strategy";
+        return queueBotSet(bots, RemoteBotControlAction::StrategySet, strategy);
+    }
+
+    if (command == "rnd.refresh" || command == "rnd.change_strategy" ||
+        command == "rnd.teleport" || command == "rnd.revive" ||
+        command == "rnd.update")
+    {
+        std::vector<Player*> bots;
+        for (auto const& [guid, bot] : playerBots)
+        {
+            if (bot && IsRandomBot(bot))
+                bots.push_back(bot);
+        }
+
+        if (command == "rnd.refresh")
+            return queueBotSet(bots, RemoteBotControlAction::Refresh);
+        if (command == "rnd.change_strategy")
+            return queueBotSet(bots, RemoteBotControlAction::ChangeStrategy);
+        if (command == "rnd.teleport")
+            return queueBotSet(bots, RemoteBotControlAction::Teleport);
+        if (command == "rnd.revive")
+            return queueBotSet(bots, RemoteBotControlAction::Revive);
+        return queueBotSet(bots, RemoteBotControlAction::Update);
+    }
+
+    if (command == "rnd.activity.set")
+    {
+        uint8 activity = 0;
+        if (!TryParsePercentage(parsed.argument, activity))
+            return "invalid activity";
+
+        setActivityPercentage(activity);
+
+        std::ostringstream out;
+        out << "activity=" << uint32(activity);
+        return out.str();
+    }
+
+    if (command == "bot.values" && StartsWith(parsed.argument, "key="))
+    {
+        std::vector<std::string> const args = SplitArguments(parsed.argument);
+        if (args.size() < 2)
+            return "invalid guid";
+
+        std::string const valueKey = TrimCopy(args[0].substr(4));
+        ObjectGuid::LowType guidLow = 0;
+        if (valueKey.empty() || !TryResolveBotGuid(args[1], guidLow))
+            return "invalid guid";
+
+        Player* bot = GetPlayerBot(ObjectGuid::Create<HighGuid::Player>(guidLow));
+        PlayerbotAI* botAI = bot ? GET_PLAYERBOT_AI(bot) : nullptr;
+        if (!botAI)
+            return "invalid guid";
+
+        if (UntypedValue* value = botAI->GetAiObjectContext()->GetUntypedValue(valueKey))
+            return value->Format();
+
+        return "unknown value";
+    }
+
+    if (parsed.command == "bot.reset" || parsed.command == "bot.refresh" ||
+        parsed.command == "bot.revive" || parsed.command == "bot.strategy.add" ||
+        parsed.command == "bot.strategy.remove" || parsed.command == "bot.strategy.set" ||
+        parsed.command == "bot.role.set" || parsed.command == "bot.travel.clear" ||
+        parsed.command == "bot.travel.retry" || parsed.command == "bot.follow.master" ||
+        parsed.command == "bot.stay" || parsed.command == "bot.stop" ||
+        parsed.command == "bot.attack.target" || parsed.command == "bot.assist.master" ||
+        parsed.command == "bot.loot.mode" || parsed.command == "bot.pause" ||
+        parsed.command == "bot.resume")
+    {
+        std::vector<std::string> const args = SplitArguments(parsed.argument);
+        if (args.empty())
+            return "invalid guid";
+
+        ObjectGuid::LowType guidLow = 0;
+        if (!TryResolveBotGuid(args[0], guidLow))
+            return "invalid guid";
+
+        Player* bot = GetPlayerBot(ObjectGuid::Create<HighGuid::Player>(guidLow));
+        if (!bot)
+            return "invalid guid";
+
+        std::string payload;
+        if (args.size() > 1)
+        {
+            payload = parsed.argument.substr(parsed.argument.find(args[1]));
+            payload = TrimCopy(payload);
+        }
+
+        if (parsed.command == "bot.reset")
+            return queueBotOperation(bot, RemoteBotControlAction::Reset);
+        if (parsed.command == "bot.refresh")
+            return queueBotOperation(bot, RemoteBotControlAction::Refresh);
+        if (parsed.command == "bot.revive")
+            return queueBotOperation(bot, RemoteBotControlAction::Revive);
+        if (parsed.command == "bot.strategy.add")
+            return payload.empty() ? "invalid strategy" : queueBotOperation(bot, RemoteBotControlAction::StrategyAdd, payload);
+        if (parsed.command == "bot.strategy.remove")
+            return payload.empty() ? "invalid strategy" : queueBotOperation(bot, RemoteBotControlAction::StrategyRemove, payload);
+        if (parsed.command == "bot.strategy.set")
+            return queueBotOperation(bot, RemoteBotControlAction::StrategySet, payload);
+        if (parsed.command == "bot.role.set")
+            return payload.empty() ? "invalid role" : queueBotOperation(bot, RemoteBotControlAction::RoleSet, payload);
+        if (parsed.command == "bot.travel.clear")
+            return queueBotOperation(bot, RemoteBotControlAction::TravelClear);
+        if (parsed.command == "bot.travel.retry")
+            return queueBotOperation(bot, RemoteBotControlAction::TravelRetry);
+        if (parsed.command == "bot.follow.master")
+            return queueBotOperation(bot, RemoteBotControlAction::FollowMaster);
+        if (parsed.command == "bot.stay")
+            return queueBotOperation(bot, RemoteBotControlAction::Stay);
+        if (parsed.command == "bot.stop")
+            return queueBotOperation(bot, RemoteBotControlAction::Stop);
+        if (parsed.command == "bot.attack.target")
+            return queueBotOperation(bot, RemoteBotControlAction::AttackTarget);
+        if (parsed.command == "bot.assist.master")
+            return queueBotOperation(bot, RemoteBotControlAction::AssistMaster);
+        if (parsed.command == "bot.loot.mode")
+            return queueBotOperation(bot, RemoteBotControlAction::LootMode, payload.empty() ? "on" : payload);
+        if (parsed.command == "bot.pause")
+            return queueBotOperation(bot, RemoteBotControlAction::Pause);
+        return queueBotOperation(bot, RemoteBotControlAction::Resume);
+    }
+
+    if (!IsBotScopedCommand(command))
+    {
+        std::ostringstream out;
+        out << "invalid command: " << parsed.command;
+        return out.str();
+    }
+
+    ObjectGuid::LowType guidLow = 0;
+    if (!TryResolveBotGuid(parsed.argument, guidLow))
+        return "invalid guid";
+
+    ObjectGuid guid = ObjectGuid::Create<HighGuid::Player>(guidLow);
     Player* bot = GetPlayerBot(guid);
     if (!bot)
         return "invalid guid";
@@ -2959,6 +3948,38 @@ std::string const RandomPlayerbotMgr::HandleRemoteCommand(std::string const requ
     PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
     if (!botAI)
         return "invalid guid";
+
+    if (command == "bot.info")
+    {
+        std::ostringstream out;
+        out << "guid=" << bot->GetGUID().GetCounter();
+        out << " name=\"" << bot->GetName() << "\"";
+        out << " level=" << uint32(bot->GetLevel());
+        out << " class=" << uint32(bot->getClass());
+        out << " race=" << uint32(bot->getRace());
+        out << " state=\"" << botAI->HandleRemoteCommand("state") << "\"";
+        out << " hp=" << bot->GetHealth() << "/" << bot->GetMaxHealth();
+        out << " power=" << bot->GetPower(bot->getPowerType()) << "/"
+            << bot->GetMaxPower(bot->getPowerType());
+        out << " map=" << bot->GetMapId();
+        out << " zone=" << bot->GetZoneId();
+
+        if (AreaTableEntry const* zone =
+                sAreaTableStore.LookupEntry(bot->GetZoneId()))
+            out << " zone_name=\"" << zone->area_name[0] << "\"";
+
+        if (Player* master = botAI->GetMaster())
+            out << " master=\"" << master->GetName() << "\"";
+
+        std::string const targetName = botAI->HandleRemoteCommand("target");
+        if (!targetName.empty())
+            out << " target=\"" << targetName << "\"";
+
+        out << " random=" << (IsRandomBot(bot) ? 1 : 0);
+        out << " addclass=" << (IsAddclassBot(bot) ? 1 : 0);
+
+        return out.str();
+    }
 
     return botAI->HandleRemoteCommand(command);
 }

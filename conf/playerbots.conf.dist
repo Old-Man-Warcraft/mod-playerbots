@@ -581,10 +581,10 @@ AiPlayerbot.AutoGearScoreLimit = 0
 # Default: food, taxi, and raid are enabled
 AiPlayerbot.BotCheats = "food,taxi,raid"
 
-# List of attunement quests (comma-separated list of quest IDs) that are automatically completed for all bots.  
+# List of attunement quests (comma-separated list of quest IDs) that are automatically completed for all bots.
 # While mod-playerbots does not restore removed attunement requirements, although other mods, such as mod-individual-progression, may do so.
 # This is meant to exclude bots from such requirements.
-# 
+#
 # Default:
 # Caverns of Time - Part 1
 # - 10279, To The Master's Lair
@@ -2014,7 +2014,66 @@ PlayerbotsDatabase.SynchThreads     = 1
 Playerbots.Updates.EnableDatabases = 1
 
 # Command server port, 0 - disabled
+#
+# Request format examples:
+#   ping
+#   version
+#   capabilities
+#   bot.list
+#   bot.count
+#   bot.types
+#   bot.find name=Tyrea
+#   bot.info 12345
+#   bot.info guid=12345
+#   bot.info name=Tyrea
+#   bot.state 12345
+#   bot.class 12345
+#   bot.role 12345
+#   bot.master 12345
+#   bot.group 12345
+#   bot.map 12345
+#   bot.zone 12345
+#   bot.follow 12345
+#   bot.mount 12345
+#   bot.power 12345
+#   bot.combat 12345
+#   bot.action.last 12345
+#   bot.action.queue 12345
+#   bot.strategy.active 12345
+#   bot.state.timers 12345
+#   bot.threat 12345
+#   bot.auras 12345
+#   bot.travel.short 12345
+#   bot.rpg 12345
+#   bot.rpg.status 12345
+#   bot.quest.summary 12345
+#   bot.loot 12345
+#   bot.vendor.intent 12345
+#   bot.instance 12345
+#   bot.money 12345
+#   bot.inventory.summary 12345
+#   bot.gear.summary 12345
+#   bot.repair 12345
+#   bot.consumables 12345
+#   bot.values key=health 12345
+#   bot.distance 12345 67890
+#
+# Legacy per-bot requests are still supported:
+#   state,12345
+#   position,12345
+#
+# Tier 2 steering is disabled by default and requires both:
+#   AiPlayerbot.CommandServerTier2Enabled = 1
+#   AiPlayerbot.CommandServerAuthToken = "your-secret-token"
+#
+# Tier 2 request format:
+#   auth=your-secret-token;bot.reset 12345
+#   auth=your-secret-token;bot.strategy.add 12345 grind
+#   auth=your-secret-token;group.pause 42
+#   auth=your-secret-token;rnd.activity.set 35
 AiPlayerbot.CommandServerPort = 8888
+AiPlayerbot.CommandServerTier2Enabled = 0
+AiPlayerbot.CommandServerAuthToken = ""
 
 #
 #

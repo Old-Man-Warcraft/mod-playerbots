@@ -322,6 +322,8 @@ public:
     std::vector<worldBuff> worldBuffs;
 
     uint32 commandServerPort;
+    bool commandServerTier2Enabled;
+    std::string commandServerAuthToken;
     bool perfMonEnabled;
     bool summonWhenGroup;
     bool randomBotShowHelmet;

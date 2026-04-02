@@ -413,6 +413,8 @@ bool PlayerbotAIConfig::Initialize()
     commandSeparator = sConfigMgr->GetOption<std::string>("AiPlayerbot.CommandSeparator", "\\\\");
 
     commandServerPort = sConfigMgr->GetOption<int32>("AiPlayerbot.CommandServerPort", 8888);
+    commandServerTier2Enabled = sConfigMgr->GetOption<bool>("AiPlayerbot.CommandServerTier2Enabled", false);
+    commandServerAuthToken = sConfigMgr->GetOption<std::string>("AiPlayerbot.CommandServerAuthToken", "");
     perfMonEnabled = sConfigMgr->GetOption<bool>("AiPlayerbot.PerfMonEnabled", false);
 
     useGroundMountAtMinLevel = sConfigMgr->GetOption<int32>("AiPlayerbot.UseGroundMountAtMinLevel", 20);
