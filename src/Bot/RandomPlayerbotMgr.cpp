@@ -190,6 +190,8 @@ std::string NormalizeStrategyDelta(std::string const& value, char op)
     return out.str();
 }
 
+bool TryParseBotGuid(std::string const& text, ObjectGuid::LowType& guid);
+
 bool TryParsePercentage(std::string const& text, uint8& value)
 {
     ObjectGuid::LowType parsed = 0;
@@ -433,7 +435,7 @@ std::vector<Player*> GetOnlineBotsByGroupId(RandomPlayerbotMgr& mgr,
                                             uint32 groupId)
 {
     std::vector<Player*> result;
-    for (auto const& [guid, bot] : mgr.GetPlayerBots())
+    for (auto const& [guid, bot] : mgr.GetAllBots())
     {
         if (!bot || !bot->GetGroup())
             continue;
@@ -516,7 +518,7 @@ bool ApplyRemoteBotControl(Player* bot, RemoteBotControlAction action,
             return true;
         }
         case RemoteBotControlAction::TravelClear:
-            TravelMgr::setNullTravelTarget(bot);
+            TravelMgr::instance().setNullTravelTarget(bot);
             botAI->Reset(false);
             return true;
         case RemoteBotControlAction::TravelRetry:

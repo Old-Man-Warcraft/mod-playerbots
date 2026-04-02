@@ -14,8 +14,8 @@
 #include "TravelNode.h"
 #include "Talentspec.h"
 #include "ChatHelper.h"
-#include "MapCollisionData.h"
 #include "MapMgr.h"
+#include "MMapFactory.h"
 #include "PathGenerator.h"
 #include "Playerbots.h"
 #include "RaceMgr.h"
@@ -750,8 +750,7 @@ void WorldPosition::loadMapAndVMap(uint32 mapId, uint8 x, uint8 y)
     if (!TravelMgr::instance().isBadMmap(mapId, x, y))
     {
         // load navmesh
-        Map* map = getMap();
-        if (map && map->GetMapCollisionData().LoadMMapTile(x, y) == MMAP::MMAP_LOAD_RESULT_ERROR)
+        if (!MMAP::MMapFactory::createOrGetMMapMgr()->loadMap(mapId, x, y))
             TravelMgr::instance().addBadMmap(mapId, x, y);
 
         if (sPlayerbotAIConfig.hasLog(fileName))
