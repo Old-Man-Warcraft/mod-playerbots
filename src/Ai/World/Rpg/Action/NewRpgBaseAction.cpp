@@ -36,19 +36,84 @@
 
 namespace
 {
-bool CanPathToGatheringNode(Player* bot, GameObject* go)
+class AnyDeadUnitInObjectRangeCheck
 {
-    if (!bot || !go)
+public:
+    AnyDeadUnitInObjectRangeCheck(WorldObject const* obj, float range) : i_obj(obj), i_range(range) {}
+    WorldObject const& GetFocusObject() const { return *i_obj; }
+    bool operator()(Unit* u)
+    {
+        return u && !u->IsAlive() && i_obj->IsWithinDistInMap(u, i_range);
+    }
+
+private:
+    WorldObject const* i_obj;
+    float i_range;
+};
+
+bool CanPathToGatheringNode(Player* bot, WorldObject* target)
+{
+    if (!bot || !target)
         return false;
 
-    if (bot->GetDistance(go) <= INTERACTION_DISTANCE - 2.0f)
+    if (bot->GetDistance(target) <= INTERACTION_DISTANCE - 2.0f)
         return true;
 
     PathGenerator path(bot);
-    path.CalculatePath(go->GetPositionX(), go->GetPositionY(), go->GetPositionZ());
+    path.CalculatePath(target->GetPositionX(), target->GetPositionY(), target->GetPositionZ());
     PathType type = path.GetPathType();
     uint32 typeOk = PATHFIND_NORMAL | PATHFIND_INCOMPLETE | PATHFIND_FARFROMPOLY;
     return !(type & (~typeOk));
+}
+
+uint32 GetRequiredSkinningSkillValue(Creature const* creature)
+{
+    if (!creature)
+        return 0;
+
+    uint32 targetLevel = creature->GetLevel();
+    return targetLevel < 10 ? 1 : targetLevel < 20 ? (targetLevel - 10) * 10 : targetLevel * 5;
+}
+
+bool TryGetGatheringSkillForTemplate(GameObjectTemplate const* goInfo, SkillType& skillId)
+{
+    if (!goInfo)
+        return false;
+
+    uint32 lockId = goInfo->GetLockId();
+    if (!lockId)
+        return false;
+
+    LockEntry const* lockInfo = sLockStore.LookupEntry(lockId);
+    if (!lockInfo)
+        return false;
+
+    for (uint8 i = 0; i < 8; ++i)
+    {
+        if (lockInfo->Type[i] != LOCK_KEY_SKILL)
+            continue;
+
+        SkillType skill = SkillByLockType(LockType(lockInfo->Index[i]));
+        if (skill == SKILL_HERBALISM || skill == SKILL_MINING)
+        {
+            skillId = skill;
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool IsHostileFactionForBot(Player* bot, uint32 factionId)
+{
+    if (!bot)
+        return false;
+
+    FactionTemplateEntry const* factionEntry = sFactionTemplateStore.LookupEntry(factionId);
+    if (!factionEntry)
+        return false;
+
+    return bot->GetReputationRank(factionEntry->faction) < REP_NEUTRAL;
 }
 }  // namespace
 
@@ -226,26 +291,28 @@ bool NewRpgBaseAction::ForceToWait(uint32 duration, MovementPriority priority)
     return true;
 }
 
-ObjectGuid NewRpgBaseAction::FindNearbyGatheringGameObject(float distanceLimit)
+ObjectGuid NewRpgBaseAction::FindNearbyGatheringTarget(float distanceLimit)
 {
     if (!sPlayerbotAIConfig.enableRpgGathering)
         return ObjectGuid();
 
-    if (!botAI->HasSkill(SKILL_HERBALISM) && !botAI->HasSkill(SKILL_MINING))
+    if (!botAI->HasSkill(SKILL_HERBALISM) && !botAI->HasSkill(SKILL_MINING) && !ShouldFarmCloth() &&
+        !ShouldFarmLeather())
         return ObjectGuid();
 
     float searchRadius = distanceLimit > 0.0f ? distanceLimit : sPlayerbotAIConfig.rpgGatheringSearchRadius;
 
+    WorldObject* nearest = nullptr;
+    float nearestDistance = std::numeric_limits<float>::max();
+    uint32 nearestSkillGap = std::numeric_limits<uint32>::max();
+    uint32 nearestReqSkill = 0;
+    SkillType nearestSkill = SKILL_NONE;
+    uint32 nearestPriority = std::numeric_limits<uint32>::max();
     std::list<GameObject*> targets;
     AnyGameObjectInObjectRangeCheck u_check(bot, searchRadius);
     Acore::GameObjectListSearcher<AnyGameObjectInObjectRangeCheck> searcher(bot, targets, u_check);
     Cell::VisitObjects(bot, searcher, searchRadius);
 
-    GameObject* nearest = nullptr;
-    float nearestDistance = std::numeric_limits<float>::max();
-    uint32 nearestSkillGap = std::numeric_limits<uint32>::max();
-    uint32 nearestReqSkill = 0;
-    SkillType nearestSkill = SKILL_NONE;
     uint32 consideredNodes = 0;
     uint32 nonGatheringNodes = 0;
     uint32 unsupportedNodes = 0;
@@ -313,10 +380,14 @@ ObjectGuid NewRpgBaseAction::FindNearbyGatheringGameObject(float distanceLimit)
 
         float distance = bot->GetExactDist(go);
         uint32 skillGap = botSkillValue - reqSkillValue;
-        if (skillGap > nearestSkillGap)
+        uint32 priority = 0;
+        if (priority > nearestPriority)
             continue;
 
-        if (skillGap == nearestSkillGap && distance >= nearestDistance)
+        if (priority == nearestPriority && skillGap > nearestSkillGap)
+            continue;
+
+        if (priority == nearestPriority && skillGap == nearestSkillGap && distance >= nearestDistance)
             continue;
 
         nearest = go;
@@ -324,6 +395,93 @@ ObjectGuid NewRpgBaseAction::FindNearbyGatheringGameObject(float distanceLimit)
         nearestSkillGap = skillGap;
         nearestReqSkill = reqSkillValue;
         nearestSkill = skill;
+        nearestPriority = priority;
+    }
+
+    std::list<Unit*> corpseTargets;
+    AnyDeadUnitInObjectRangeCheck deadCheck(bot, searchRadius);
+    Acore::UnitListSearcher<AnyDeadUnitInObjectRangeCheck> deadSearcher(bot, corpseTargets, deadCheck);
+    Cell::VisitObjects(bot, deadSearcher, searchRadius);
+
+    for (Unit* unit : corpseTargets)
+    {
+        Creature* creature = unit ? unit->ToCreature() : nullptr;
+        if (!creature || creature->getDeathState() != DeathState::Corpse || !creature->IsInWorld())
+            continue;
+
+        consideredNodes++;
+
+        LootObject loot(bot, creature->GetGUID());
+        if (loot.IsEmpty())
+        {
+            nonGatheringNodes++;
+            continue;
+        }
+
+        bool clothTarget = ShouldFarmCloth() && creature->GetCreatureType() == CREATURE_TYPE_HUMANOID &&
+                           creature->GetCreatureTemplate()->lootid;
+        bool leatherTarget = ShouldFarmLeather() && creature->GetCreatureTemplate()->SkinLootId;
+
+        if (!clothTarget && !leatherTarget)
+        {
+            unsupportedNodes++;
+            continue;
+        }
+
+        SkillType skill = SKILL_NONE;
+        uint32 reqSkillValue = 1;
+        uint32 botSkillValue = 1;
+        uint32 priority = 2;
+
+        if (leatherTarget)
+        {
+            skill = SKILL_SKINNING;
+            reqSkillValue = std::max<uint32>(1, loot.reqSkillValue ? loot.reqSkillValue : GetRequiredSkinningSkillValue(creature));
+            botSkillValue = GetRpgGatheringSkillValue(skill);
+            priority = creature->HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_SKINNABLE) ? 0 : 1;
+
+            if (!botAI->HasSkill(skill) || botSkillValue < reqSkillValue)
+            {
+                insufficientSkillNodes++;
+                continue;
+            }
+
+            if (!HasRequiredGatheringTool(skill))
+            {
+                missingToolNodes++;
+                continue;
+            }
+        }
+
+        if (!loot.IsLootPossible(bot))
+        {
+            blockedNodes++;
+            continue;
+        }
+
+        if (!CanPathToGatheringNode(bot, creature))
+        {
+            unreachableNodes++;
+            continue;
+        }
+
+        float distance = bot->GetExactDist(creature);
+        uint32 skillGap = skill == SKILL_NONE ? 0 : botSkillValue - reqSkillValue;
+        if (priority > nearestPriority)
+            continue;
+
+        if (priority == nearestPriority && skillGap > nearestSkillGap)
+            continue;
+
+        if (priority == nearestPriority && skillGap == nearestSkillGap && distance >= nearestDistance)
+            continue;
+
+        nearest = creature;
+        nearestDistance = distance;
+        nearestSkillGap = skillGap;
+        nearestReqSkill = reqSkillValue;
+        nearestSkill = skill;
+        nearestPriority = priority;
     }
 
     if (sPlayerbotAIConfig.debugRpgGathering)
@@ -333,7 +491,7 @@ ObjectGuid NewRpgBaseAction::FindNearbyGatheringGameObject(float distanceLimit)
             LOG_DEBUG(
                 "playerbots",
                 "[New RPG][Gather] {} selected {} (entry {}) skill {} botSkill {} reqSkill {} gap {} distance {:.1f}",
-                bot->GetName(), ChatHelper::FormatGameobject(nearest), nearest->GetEntry(), uint32(nearestSkill),
+                bot->GetName(), ChatHelper::FormatWorldobject(nearest), nearest->GetEntry(), uint32(nearestSkill),
                 GetRpgGatheringSkillValue(nearestSkill), nearestReqSkill, nearestSkillGap, nearestDistance);
         }
         else if (consideredNodes > 0)
@@ -370,6 +528,8 @@ bool NewRpgBaseAction::IsSupportedRpgGatheringSkill(SkillType skill) const
     {
         case SKILL_HERBALISM:
         case SKILL_MINING:
+        case SKILL_SKINNING:
+        case SKILL_NONE:
             return true;
         default:
             return false;
@@ -383,13 +543,29 @@ uint32 NewRpgBaseAction::GetRpgGatheringSkillValue(SkillType skill) const
 
 bool NewRpgBaseAction::HasRequiredGatheringTool(SkillType skill) const
 {
-    if (skill != SKILL_MINING)
-        return true;
+    switch (skill)
+    {
+        case SKILL_MINING:
+            return bot->HasItemCount(756, 1) || bot->HasItemCount(778, 1) || bot->HasItemCount(1819, 1) ||
+                   bot->HasItemCount(1893, 1) || bot->HasItemCount(1959, 1) || bot->HasItemCount(2901, 1) ||
+                   bot->HasItemCount(9465, 1) || bot->HasItemCount(20723, 1) || bot->HasItemCount(40772, 1) ||
+                   bot->HasItemCount(40892, 1) || bot->HasItemCount(40893, 1);
+        case SKILL_SKINNING:
+            return bot->HasItemCount(7005, 1) || bot->HasItemCount(40772, 1) || bot->HasItemCount(40893, 1) ||
+                   bot->HasItemCount(12709, 1) || bot->HasItemCount(19901, 1);
+        default:
+            return true;
+    }
+}
 
-    return bot->HasItemCount(756, 1) || bot->HasItemCount(778, 1) || bot->HasItemCount(1819, 1) ||
-           bot->HasItemCount(1893, 1) || bot->HasItemCount(1959, 1) || bot->HasItemCount(2901, 1) ||
-           bot->HasItemCount(9465, 1) || bot->HasItemCount(20723, 1) || bot->HasItemCount(40772, 1) ||
-           bot->HasItemCount(40892, 1) || bot->HasItemCount(40893, 1);
+bool NewRpgBaseAction::ShouldFarmCloth() const
+{
+    return botAI->HasSkill(SKILL_TAILORING);
+}
+
+bool NewRpgBaseAction::ShouldFarmLeather() const
+{
+    return botAI->HasSkill(SKILL_SKINNING);
 }
 
 /// @TODO: Fix redundant code
@@ -1100,6 +1276,123 @@ WorldPosition NewRpgBaseAction::SelectRandomGrindPos(Player* bot)
     return dest;
 }
 
+WorldPosition NewRpgBaseAction::SelectRandomFarmingPos() const
+{
+    bool wantMining = botAI->HasSkill(SKILL_MINING);
+    bool wantHerbalism = botAI->HasSkill(SKILL_HERBALISM);
+    bool wantCloth = ShouldFarmCloth();
+    bool wantLeather = ShouldFarmLeather();
+
+    if (!wantMining && !wantHerbalism && !wantCloth && !wantLeather)
+        return WorldPosition();
+
+    float hiRange = 750.0f;
+    float loRange = 5000.0f;
+    if (bot->GetLevel() < 5)
+    {
+        hiRange /= 3;
+        loRange /= 3;
+    }
+
+    bool inCity = false;
+    if (AreaTableEntry const* zone = sAreaTableStore.LookupEntry(bot->GetZoneId()))
+    {
+        if (zone->flags & AREA_FLAG_CAPITAL)
+            inCity = true;
+    }
+
+    std::vector<WorldLocation> strictHiLocs, strictLoLocs, mapHiLocs, mapLoLocs;
+
+    auto addCandidate = [&](WorldLocation const& loc)
+    {
+        if (bot->GetMapId() != loc.GetMapId())
+            return;
+
+        float distance = bot->GetExactDist(loc);
+        if (distance > loRange)
+            return;
+
+        bool sameZone = inCity ||
+                        bot->GetMap()->GetZoneId(bot->GetPhaseMask(), loc.GetPositionX(), loc.GetPositionY(),
+                                                 loc.GetPositionZ()) == bot->GetZoneId();
+
+        if (distance <= hiRange)
+        {
+            if (sameZone)
+                strictHiLocs.push_back(loc);
+            else
+                mapHiLocs.push_back(loc);
+        }
+
+        if (sameZone)
+            strictLoLocs.push_back(loc);
+        else
+            mapLoLocs.push_back(loc);
+    };
+
+    for (auto const& [guid, gameObjectData] : sObjectMgr->GetAllGOData())
+    {
+        if (gameObjectData.mapid != bot->GetMapId())
+            continue;
+
+        GameObjectTemplate const* goInfo = sObjectMgr->GetGameObjectTemplate(gameObjectData.id);
+        SkillType skillId = SKILL_NONE;
+        if (!TryGetGatheringSkillForTemplate(goInfo, skillId))
+            continue;
+
+        if ((skillId == SKILL_MINING && !wantMining) || (skillId == SKILL_HERBALISM && !wantHerbalism))
+            continue;
+
+        addCandidate(WorldLocation(gameObjectData.mapid, gameObjectData.posX, gameObjectData.posY,
+                                   gameObjectData.posZ, gameObjectData.orientation));
+    }
+
+    for (auto const& [guid, creatureData] : sObjectMgr->GetAllCreatureData())
+    {
+        if (creatureData.mapid != bot->GetMapId())
+            continue;
+
+        CreatureTemplate const* creatureTemplate = sObjectMgr->GetCreatureTemplate(creatureData.id1);
+        if (!creatureTemplate || !IsHostileFactionForBot(bot, creatureTemplate->faction))
+            continue;
+
+        bool clothTarget = wantCloth && creatureTemplate->type == CREATURE_TYPE_HUMANOID &&
+                           creatureTemplate->lootid;
+        bool leatherTarget = wantLeather && creatureTemplate->SkinLootId;
+        if (!clothTarget && !leatherTarget)
+            continue;
+
+        addCandidate(WorldLocation(creatureData.mapid, creatureData.posX, creatureData.posY, creatureData.posZ,
+                                   creatureData.orientation));
+    }
+
+    WorldPosition dest{};
+    auto chooseFrom = [&](std::vector<WorldLocation> const& locs) -> bool
+    {
+        if (locs.empty())
+            return false;
+
+        dest = locs[urand(0, locs.size() - 1)];
+        return true;
+    };
+
+    if (!chooseFrom(strictHiLocs) && !chooseFrom(strictLoLocs) && !chooseFrom(mapHiLocs) && !chooseFrom(mapLoLocs))
+        return dest;
+
+    if (sPlayerbotAIConfig.debugRpgGathering)
+    {
+        LOG_DEBUG(
+            "playerbots",
+            "[New RPG][Gather] {} selected farming destination Map:{} X:{} Y:{} Z:{} (strict hi: {}, strict lo: {}, map hi: {}, map lo: {}, mining: {}, herbalism: {}, skinning: {}, tailoring: {})",
+            bot->GetName(), dest.GetMapId(), dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ(),
+            strictHiLocs.size(), strictLoLocs.size(), mapHiLocs.size(), mapLoLocs.size(),
+            GetRpgGatheringSkillValue(SKILL_MINING), GetRpgGatheringSkillValue(SKILL_HERBALISM),
+            GetRpgGatheringSkillValue(SKILL_SKINNING), GetRpgGatheringSkillValue(SKILL_TAILORING));
+    }
+
+    return dest;
+}
+
 WorldPosition NewRpgBaseAction::SelectRandomCampPos(Player* bot)
 {
     const std::vector<WorldLocation> locs = sTravelMgr.GetTravelHubs(bot);
@@ -1228,7 +1521,7 @@ bool NewRpgBaseAction::RandomChangeStatus(std::vector<NewRpgStatus> candidateSta
         }
         case RPG_FARMING:
         {
-            WorldPosition pos = SelectRandomGrindPos(bot);
+            WorldPosition pos = SelectRandomFarmingPos();
             if (pos != WorldPosition())
             {
                 botAI->rpgInfo.ChangeToFarming(pos);
@@ -1236,9 +1529,10 @@ bool NewRpgBaseAction::RandomChangeStatus(std::vector<NewRpgStatus> candidateSta
                 {
                     LOG_DEBUG(
                         "playerbots",
-                        "[New RPG][Gather] {} entered farming status at Map:{} X:{} Y:{} Z:{} (mining: {}, herbalism: {})",
+                        "[New RPG][Gather] {} entered farming status at Map:{} X:{} Y:{} Z:{} (mining: {}, herbalism: {}, skinning: {}, tailoring: {})",
                         bot->GetName(), pos.GetMapId(), pos.GetPositionX(), pos.GetPositionY(), pos.GetPositionZ(),
-                        GetRpgGatheringSkillValue(SKILL_MINING), GetRpgGatheringSkillValue(SKILL_HERBALISM));
+                        GetRpgGatheringSkillValue(SKILL_MINING), GetRpgGatheringSkillValue(SKILL_HERBALISM),
+                        GetRpgGatheringSkillValue(SKILL_SKINNING), GetRpgGatheringSkillValue(SKILL_TAILORING));
                 }
                 return true;
             }
@@ -1327,7 +1621,7 @@ bool NewRpgBaseAction::CheckRpgStatusAvailable(NewRpgStatus status)
         }
         case RPG_FARMING:
         {
-            WorldPosition pos = SelectRandomGrindPos(bot);
+            WorldPosition pos = SelectRandomFarmingPos();
             return pos != WorldPosition();
         }
         case RPG_WANDER_NPC:

@@ -217,7 +217,7 @@ bool NewRpgFarmingAction::Execute(Event /*event*/)
         {
             data->lastGatherSearch = getMSTime();
 
-            if (ObjectGuid gatheringNode = FindNearbyGatheringGameObject())
+            if (ObjectGuid gatheringNode = FindNearbyGatheringTarget())
             {
                 data->gatheringNode = gatheringNode;
                 QueueGatheringLoot(gatheringNode);

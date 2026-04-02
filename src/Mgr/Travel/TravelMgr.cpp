@@ -4648,9 +4648,9 @@ void TravelMgr::PrepareDestinationCache()
             (creatureTemplate->unit_flags & 4096) == 0 &&
             creatureTemplate->rank == 0)
         {
-            uint32 roundX = (x / 50.0f) * 10.0f;
-            uint32 roundY = (y / 50.0f) * 10.0f;
-            uint32 roundZ = (z / 50.0f) * 10.0f;
+            int32 roundX = static_cast<int32>(std::floor(x / 50.0f));
+            int32 roundY = static_cast<int32>(std::floor(y / 50.0f));
+            int32 roundZ = static_cast<int32>(std::floor(z / 50.0f));
             tempLocsCache[std::make_tuple(mapId, roundX, roundY, roundZ)].push_back(creatureData);
             tempCreatureCache[templateEntry][areaId].push_back(WorldLocation(mapId, x, y, z));
         }
@@ -4732,6 +4732,16 @@ void TravelMgr::PrepareDestinationCache()
         if (creatureDataList.size() > 2)
         {
             CreatureTemplate const* creatureTemplate = sObjectMgr->GetCreatureTemplate(creatureDataList[0].id1);
+            float totalX = 0.0f, totalY = 0.0f, totalZ = 0.0f;
+            for (CreatureData const& creatureData : creatureDataList)
+            {
+                totalX += creatureData.posX;
+                totalY += creatureData.posY;
+                totalZ += creatureData.posZ;
+            }
+
+            WorldLocation clusterCenter(std::get<0>(gridTuple), totalX / creatureDataList.size(),
+                                        totalY / creatureDataList.size(), totalZ / creatureDataList.size(), 0.0f);
             uint32 level = (creatureTemplate->minlevel + creatureTemplate->maxlevel + 1) / 2;
             for (int32 l = (int32)level - (int32)sPlayerbotAIConfig.randomBotTeleLowerLevel;
                  l <= (int32)level + (int32)sPlayerbotAIConfig.randomBotTeleHigherLevel; l++)
@@ -4739,7 +4749,7 @@ void TravelMgr::PrepareDestinationCache()
                 if (l < 1 || l > maxLevel)
                     continue;
 
-                locsPerLevelCache[(uint8)l].push_back(WorldLocation(std::get<0>(gridTuple)));
+                locsPerLevelCache[(uint8)l].push_back(clusterCenter);
             }
         }
     }
