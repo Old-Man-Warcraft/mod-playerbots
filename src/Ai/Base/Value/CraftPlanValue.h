@@ -6,6 +6,9 @@
 #ifndef _PLAYERBOT_CRAFTPLANVALUE_H
 #define _PLAYERBOT_CRAFTPLANVALUE_H
 
+#include <set>
+#include <string>
+
 #include "ItemUsageValue.h"
 #include "NamedObjectContext.h"
 #include "Value.h"
@@ -31,9 +34,21 @@ struct CraftPlan
     uint32 score = 0;
     uint32 currentCount = 0;
     uint32 desiredCount = 0;
+    uint32 reagentBuyCost = 0;
+    uint32 totalReagentCount = 0;
+    uint32 scarceReagentCount = 0;
     bool givesSkillUp = false;
     bool hasVendorProfit = false;
+    bool isUsable = false;
+    bool ownsEqualOrBetter = false;
+    bool isMajorUpgrade = false;
+    bool consumesReservedReagents = false;
     CraftPlanPurpose purpose = CraftPlanPurpose::None;
+    float outputScore = 0.0f;
+    float equippedScore = 0.0f;
+    float bestOwnedScore = 0.0f;
+    float upgradeDelta = 0.0f;
+    std::string reason;
 
     bool IsEmpty() const { return spellId == 0 || itemId == 0; }
 };
@@ -49,8 +64,18 @@ public:
 
 private:
     bool IsSupportedCraftSpell(SpellInfo const* spellInfo) const;
+    bool IsEquippableUsage(ItemUsage usage) const;
+    bool IsComparableGear(ItemTemplate const* leftProto, ItemTemplate const* rightProto) const;
+    bool IsMajorUpgrade(CraftPlan const& plan) const;
+    bool IsScarceReagent(ItemTemplate const* proto) const;
+    bool UsesReservedReagents(SpellInfo const* spellInfo, std::set<uint32> const& reservedReagents) const;
+    void EvaluateOwnedItemState(ItemTemplate const* proto, ItemUsage& usage, CraftPlan& plan) const;
+    void DescribePlan(CraftPlan& plan) const;
     uint32 GetDesiredCount(ItemTemplate const* proto, uint32 itemId, ItemUsage usage) const;
     uint32 GetCurrentCount(uint32 itemId) const;
+    uint32 GetReagentBuyCost(SpellInfo const* spellInfo) const;
+    uint32 GetTotalReagentCount(SpellInfo const* spellInfo) const;
+    uint32 GetScarceReagentCount(SpellInfo const* spellInfo) const;
     uint32 ScoreSpell(SpellInfo const* spellInfo, ItemTemplate const* proto, ItemUsage usage,
                       bool givesSkillUp, CraftPlan& plan) const;
     bool HasVendorProfit(SpellInfo const* spellInfo, uint32 createdItemCount) const;

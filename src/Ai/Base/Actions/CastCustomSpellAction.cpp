@@ -357,15 +357,16 @@ bool CraftRandomItemAction::Execute(Event /*event*/)
     {
         SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(plan.spellId);
         LOG_DEBUG("playerbots",
-                  "Bot {} crafted planned item {} with spell {} (score {}, purpose {}, skillUp {}, vendorProfit {})",
+                  "Bot {} crafted planned item {} with spell {} (score {}, purpose {}, skillUp {}, vendorProfit {}, reason: {})",
                   bot->GetName().c_str(), plan.itemId, plan.spellId, plan.score,
-                  static_cast<uint32>(plan.purpose), plan.givesSkillUp, plan.hasVendorProfit);
+                  static_cast<uint32>(plan.purpose), plan.givesSkillUp, plan.hasVendorProfit, plan.reason);
 
         if (spellInfo)
         {
             LOG_DEBUG("playerbots",
-                      "Bot {} planned craft spell {} ({}) creating item {}",
-                      bot->GetName().c_str(), plan.spellId, spellInfo->SpellName[0], plan.itemId);
+                      "Bot {} planned craft spell {} ({}) creating item {} [upgradeDelta {}, ownedBest {}, reagentCost {}, scarceReagents {}]",
+                      bot->GetName().c_str(), plan.spellId, spellInfo->SpellName[0], plan.itemId,
+                      plan.upgradeDelta, plan.bestOwnedScore, plan.reagentBuyCost, plan.scarceReagentCount);
         }
     }
 
