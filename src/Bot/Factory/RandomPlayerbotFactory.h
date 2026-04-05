@@ -55,6 +55,8 @@ public:
     static std::string const CreateRandomGuildName();
     static uint32 CalculateTotalAccountCount();
     static uint32 CalculateAvailableCharsPerAccount();
+    static uint32 GetCurrentRealmId();
+    static std::vector<uint32> GetOwnedRandomBotAccounts();
 
 private:
     static bool IsValidRaceClassCombination(uint8 race, uint8 class_, uint32 expansion);

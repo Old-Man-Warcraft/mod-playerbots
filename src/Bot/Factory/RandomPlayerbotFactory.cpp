@@ -7,6 +7,7 @@
 
 #include "AccountMgr.h"
 #include "ArenaTeamMgr.h"
+#include "Config.h"
 #include "DatabaseEnv.h"
 #include "PlayerbotAI.h"
 #include "RaceMgr.h"
@@ -15,6 +16,143 @@
 #include "SocialMgr.h"
 #include "Timer.h"
 #include "Log.h"
+
+#include <optional>
+
+namespace
+{
+struct RealmCharacterCounts
+{
+    uint32 currentRealm = 0;
+    uint32 total = 0;
+    uint32 activeRealms = 0;
+    std::string activeRealmList;
+};
+
+std::string BuildAccountIdList(std::vector<uint32> const& accountIds)
+{
+    std::ostringstream out;
+
+    for (size_t i = 0; i < accountIds.size(); ++i)
+    {
+        if (i)
+            out << ',';
+
+        out << accountIds[i];
+    }
+
+    return out.str();
+}
+
+std::optional<uint32> GetOwnedRealmId(uint32 accountId)
+{
+    QueryResult result = LoginDatabase.Query(
+        "SELECT owner_realm_id FROM playerbots_account_ownership "
+        "WHERE account_id = {}",
+        accountId);
+
+    if (!result)
+        return std::nullopt;
+
+    return result->Fetch()[0].Get<uint32>();
+}
+
+RealmCharacterCounts GetRealmCharacterCounts(uint32 accountId, uint32 realmId)
+{
+    RealmCharacterCounts counts;
+
+    QueryResult result = LoginDatabase.Query(
+        "SELECT COALESCE(SUM(CASE WHEN realmid = {} THEN numchars ELSE 0 END), 0), "
+        "COALESCE(SUM(numchars), 0), COUNT(CASE WHEN numchars > 0 THEN 1 END), "
+        "COALESCE(GROUP_CONCAT(CASE WHEN numchars > 0 THEN realmid END "
+        "ORDER BY realmid SEPARATOR ','), '') "
+        "FROM realmcharacters WHERE acctid = {}",
+        realmId, accountId);
+
+    if (!result)
+        return counts;
+
+    Field* fields = result->Fetch();
+    counts.currentRealm = fields[0].Get<uint32>();
+    counts.total = fields[1].Get<uint32>();
+    counts.activeRealms = fields[2].Get<uint32>();
+    counts.activeRealmList = fields[3].Get<std::string>();
+
+    return counts;
+}
+
+bool IsTrackedInLocalPlayerbotsDb(uint32 accountId)
+{
+    return PlayerbotsDatabase.Query(
+        "SELECT 1 FROM playerbots_account_type WHERE account_id = {}",
+        accountId) != nullptr;
+}
+
+bool TryClaimOwnership(uint32 accountId, uint32 realmId)
+{
+    LoginDatabase.DirectExecute(
+        "INSERT IGNORE INTO playerbots_account_ownership "
+        "(account_id, owner_realm_id) VALUES ({}, {})",
+        accountId, realmId);
+
+    std::optional<uint32> ownerRealmId = GetOwnedRealmId(accountId);
+    return ownerRealmId && *ownerRealmId == realmId;
+}
+
+bool TryAdoptUnownedRandomBotAccount(uint32 accountId, uint32 realmId,
+                                     bool allowEmptyAccounts)
+{
+    if (std::optional<uint32> ownerRealmId = GetOwnedRealmId(accountId))
+        return *ownerRealmId == realmId;
+
+    RealmCharacterCounts counts = GetRealmCharacterCounts(accountId, realmId);
+    bool const hasLocalTracking = IsTrackedInLocalPlayerbotsDb(accountId);
+    bool const canClaimEmpty = allowEmptyAccounts && counts.total == 0;
+
+    if (counts.activeRealms > 1)
+    {
+        if (counts.currentRealm || hasLocalTracking)
+        {
+            LOG_WARN("playerbots",
+                     "Skipping ambiguous random bot account {}: it has "
+                     "characters on multiple realms ({})",
+                     accountId, counts.activeRealmList.c_str());
+        }
+
+        return false;
+    }
+
+    if (!counts.currentRealm && !hasLocalTracking && !canClaimEmpty)
+        return false;
+
+    return TryClaimOwnership(accountId, realmId);
+}
+
+uint32 AdoptExistingRandomBotAccounts(uint32 realmId, bool allowEmptyAccounts)
+{
+    uint32 adoptedAccounts = 0;
+    QueryResult result = LoginDatabase.Query(
+        "SELECT id FROM account WHERE username LIKE '{}%%' ORDER BY id",
+        sPlayerbotAIConfig.randomBotAccountPrefix.c_str());
+
+    if (!result)
+        return adoptedAccounts;
+
+    do
+    {
+        uint32 const accountId = result->Fetch()[0].Get<uint32>();
+
+        if (TryAdoptUnownedRandomBotAccount(accountId, realmId,
+                                            allowEmptyAccounts))
+        {
+            ++adoptedAccounts;
+        }
+    }
+    while (result->NextRow());
+
+    return adoptedAccounts;
+}
+}
 
 constexpr RandomPlayerbotFactory::NameRaceAndGender RandomPlayerbotFactory::CombineRaceAndGender(uint8 race,
                                                                                                 uint8 gender)
@@ -443,42 +581,66 @@ uint32 RandomPlayerbotFactory::CalculateAvailableCharsPerAccount()
     return availableChars;
 }
 
+uint32 RandomPlayerbotFactory::GetCurrentRealmId()
+{
+    return static_cast<uint32>(sConfigMgr->GetOption<int32>("RealmID", 0));
+}
+
+std::vector<uint32> RandomPlayerbotFactory::GetOwnedRandomBotAccounts()
+{
+    std::vector<uint32> accountIds;
+    uint32 const realmId = GetCurrentRealmId();
+
+    QueryResult result = LoginDatabase.Query(
+        "SELECT a.id FROM account a "
+        "INNER JOIN playerbots_account_ownership o ON o.account_id = a.id "
+        "WHERE a.username LIKE '{}%%' AND o.owner_realm_id = {} "
+        "ORDER BY a.id",
+        sPlayerbotAIConfig.randomBotAccountPrefix.c_str(), realmId);
+
+    if (!result)
+        return accountIds;
+
+    do
+    {
+        accountIds.push_back(result->Fetch()[0].Get<uint32>());
+    }
+    while (result->NextRow());
+
+    return accountIds;
+}
+
 void RandomPlayerbotFactory::CreateRandomBots()
 {
     /* multi-thread here is meaningless? since the async db operations */
 
+    uint32 const realmId = GetCurrentRealmId();
+
     if (sPlayerbotAIConfig.deleteRandomBotAccounts)
     {
-        std::vector<uint32> botAccounts;
-        std::vector<uint32> botFriends;
+        uint32 const adoptedAccounts =
+            AdoptExistingRandomBotAccounts(realmId, false);
+        std::vector<uint32> botAccounts = GetOwnedRandomBotAccounts();
+        std::string const botAccountList = BuildAccountIdList(botAccounts);
 
-        // Calculates the total number of required accounts.
-        uint32 totalAccountCount = CalculateTotalAccountCount();
-
-        for (uint32 accountNumber = 0; accountNumber < totalAccountCount; ++accountNumber)
-        {
-            std::ostringstream out;
-            out << sPlayerbotAIConfig.randomBotAccountPrefix << accountNumber;
-            std::string const accountName = out.str();
-
-            if (uint32 accountId = AccountMgr::GetId(accountName))
-                botAccounts.push_back(accountId);
-        }
-
-        LOG_INFO("playerbots", "Deleting all random bot characters and accounts...");
+        LOG_INFO("playerbots",
+                 "Deleting random bot characters and accounts for realm {} "
+                 "({} adopted, {} owned accounts found)...",
+                 realmId, adoptedAccounts, botAccounts.size());
 
         // First execute all the cleanup SQL commands
         // Clear playerbots_random_bots and playerbots_account_type
         PlayerbotsDatabase.Execute("DELETE FROM playerbots_random_bots");
         PlayerbotsDatabase.Execute("DELETE FROM playerbots_account_type");
 
-        // Get the database names dynamically
-        std::string loginDBName = LoginDatabase.GetConnectionInfo()->database;
         std::string characterDBName = CharacterDatabase.GetConnectionInfo()->database;
 
-        // Delete all characters from bot accounts
-        CharacterDatabase.Execute("DELETE FROM characters WHERE account IN (SELECT id FROM " + loginDBName + ".account WHERE username LIKE '{}%%')",
-            sPlayerbotAIConfig.randomBotAccountPrefix.c_str());
+        if (!botAccountList.empty())
+        {
+            CharacterDatabase.Execute(
+                "DELETE FROM characters WHERE account IN ({})",
+                botAccountList.c_str());
+        }
 
         // Wait for the characters to be deleted before proceeding to dependent deletes
         while (CharacterDatabase.QueueSize())
@@ -491,8 +653,9 @@ void RandomPlayerbotFactory::CreateRandomBots()
         PlayerbotsDatabase.Execute("DELETE FROM playerbots_guild_tasks WHERE owner NOT IN (SELECT guid FROM " + characterDBName + ".characters)");
 
         // Clean up orphaned entries in playerbots_db_store
-        PlayerbotsDatabase.Execute("DELETE FROM playerbots_db_store WHERE guid NOT IN (SELECT guid FROM " + characterDBName + ".characters WHERE account IN (SELECT id FROM " + loginDBName + ".account WHERE username NOT LIKE '{}%%'))",
-            sPlayerbotAIConfig.randomBotAccountPrefix.c_str());
+        PlayerbotsDatabase.Execute(
+            "DELETE FROM playerbots_db_store WHERE guid NOT IN "
+            "(SELECT guid FROM " + characterDBName + ".characters)");
 
         // Clean up orphaned records in character-related tables
         CharacterDatabase.Execute("DELETE FROM arena_team_member WHERE guid NOT IN (SELECT guid FROM characters)");
@@ -546,18 +709,21 @@ void RandomPlayerbotFactory::CreateRandomBots()
 
         // Finally, delete the bot accounts themselves
         LOG_INFO("playerbots", "Deleting random bot accounts...");
-        QueryResult results = LoginDatabase.Query("SELECT id FROM account WHERE username LIKE '{}%%'",
-                                             sPlayerbotAIConfig.randomBotAccountPrefix.c_str());
         int32 deletion_count = 0;
-        if (results)
+
+        for (uint32 accId : botAccounts)
         {
-            do
-            {
-                Field* fields = results->Fetch();
-                uint32 accId = fields[0].Get<uint32>();
-                LOG_DEBUG("playerbots", "Deleting account accID: {}({})...", accId, ++deletion_count);
-                AccountMgr::DeleteAccount(accId);
-            } while (results->NextRow());
+            LOG_DEBUG("playerbots", "Deleting account accID: {}({})...",
+                      accId, ++deletion_count);
+            AccountMgr::DeleteAccount(accId);
+        }
+
+        if (!botAccountList.empty())
+        {
+            LoginDatabase.DirectExecute(
+                "DELETE FROM playerbots_account_ownership "
+                "WHERE account_id IN ({})",
+                botAccountList.c_str());
         }
 
         uint32 timer = getMSTime();
@@ -585,28 +751,37 @@ void RandomPlayerbotFactory::CreateRandomBots()
         return;
     }
 
-    LOG_INFO("playerbots", "Creating random bot accounts...");
+    uint32 const adoptedAccounts = AdoptExistingRandomBotAccounts(realmId, true);
+
+    LOG_INFO("playerbots",
+             "Creating random bot accounts for realm {} ({} adopted)...",
+             realmId, adoptedAccounts);
     std::unordered_map<NameRaceAndGender, std::vector<std::string>> nameCache;
     std::vector<std::future<void>> account_creations;
+    std::vector<std::string> createdAccountNames;
+    std::vector<std::string> selectedAccountNames;
     int account_creation = 0;
 
     // Calculates the total number of required accounts.
     uint32 totalAccountCount = CalculateTotalAccountCount();
     uint32 timer = getMSTime();
 
-    for (uint32 accountNumber = 0; accountNumber < totalAccountCount; ++accountNumber)
+    for (uint32 accountNumber = 0;
+         selectedAccountNames.size() < totalAccountCount;
+         ++accountNumber)
     {
         std::ostringstream out;
         out << sPlayerbotAIConfig.randomBotAccountPrefix << accountNumber;
         std::string const accountName = out.str();
 
-        LoginDatabasePreparedStatement* stmt = LoginDatabase.GetPreparedStatement(LOGIN_GET_ACCOUNT_ID_BY_USERNAME);
-        stmt->SetData(0, accountName);
-        PreparedQueryResult result = LoginDatabase.Query(stmt);
-        if (result)
+        if (uint32 const accountId = AccountMgr::GetId(accountName))
         {
+            if (TryAdoptUnownedRandomBotAccount(accountId, realmId, true))
+                selectedAccountNames.push_back(accountName);
+
             continue;
         }
+
         account_creation++;
         std::string password = "";
         if (sPlayerbotAIConfig.randomBotRandomPassword)
@@ -620,6 +795,8 @@ void RandomPlayerbotFactory::CreateRandomBots()
             password = accountName;
 
         AccountMgr::CreateAccount(accountName, password);
+        createdAccountNames.push_back(accountName);
+        selectedAccountNames.push_back(accountName);
 
         LOG_DEBUG("playerbots", "Account {} created for random bots", accountName.c_str());
     }
@@ -635,6 +812,27 @@ void RandomPlayerbotFactory::CreateRandomBots()
         LOG_INFO("playerbots", ">> {} Accounts loaded into database in {} ms", account_creation, GetMSTimeDiffToNow(timer));
     }
 
+    for (std::string const& accountName : createdAccountNames)
+    {
+        uint32 const accountId = AccountMgr::GetId(accountName);
+
+        if (!accountId)
+        {
+            LOG_ERROR("playerbots",
+                      "Failed to look up newly created random bot account {}",
+                      accountName.c_str());
+            continue;
+        }
+
+        if (!TryClaimOwnership(accountId, realmId))
+        {
+            LOG_ERROR("playerbots",
+                      "Failed to claim ownership of random bot account {} "
+                      "for realm {}",
+                      accountName.c_str(), realmId);
+        }
+    }
+
     LOG_INFO("playerbots", "Creating random bot characters...");
     uint32 totalRandomBotChars = 0;
     std::vector<std::pair<Player*, uint32>> playerBots;
@@ -642,20 +840,24 @@ void RandomPlayerbotFactory::CreateRandomBots()
     int bot_creation = 0;
     timer = getMSTime();
     bool nameCached = false;
-    for (uint32 accountNumber = 0; accountNumber < totalAccountCount; ++accountNumber)
+    std::vector<uint32> ownedAccountIds = GetOwnedRandomBotAccounts();
+
+    if (ownedAccountIds.size() > totalAccountCount)
+        ownedAccountIds.resize(totalAccountCount);
+
+    if (ownedAccountIds.size() < totalAccountCount)
     {
-        std::ostringstream out;
-        out << sPlayerbotAIConfig.randomBotAccountPrefix << accountNumber;
-        std::string const accountName = out.str();
+        LOG_WARN("playerbots",
+                 "Realm {} owns {} random bot accounts, but {} are needed",
+                 realmId, ownedAccountIds.size(), totalAccountCount);
+    }
 
-        LoginDatabasePreparedStatement* stmt = LoginDatabase.GetPreparedStatement(LOGIN_GET_ACCOUNT_ID_BY_USERNAME);
-        stmt->SetData(0, accountName);
-        PreparedQueryResult result = LoginDatabase.Query(stmt);
-        if (!result)
-            continue;
+    sPlayerbotAIConfig.randomBotAccounts.clear();
 
-        Field* fields = result->Fetch();
-        uint32 accountId = fields[0].Get<uint32>();
+    for (size_t accountIndex = 0; accountIndex < ownedAccountIds.size();
+         ++accountIndex)
+    {
+        uint32 const accountId = ownedAccountIds[accountIndex];
 
         sPlayerbotAIConfig.randomBotAccounts.push_back(accountId);
 
@@ -694,7 +896,7 @@ void RandomPlayerbotFactory::CreateRandomBots()
             } while (result->NextRow());
         }
 
-        LOG_DEBUG("playerbots", "Creating random bot characters for account: [{}/{}]", accountNumber + 1, totalAccountCount);
+        LOG_DEBUG("playerbots", "Creating random bot characters for account: [{}/{}]", accountIndex + 1, ownedAccountIds.size());
         RandomPlayerbotFactory factory;
 
         WorldSession* session = new WorldSession(accountId, "", 0x0, nullptr, SEC_PLAYER, EXPANSION_WRATH_OF_THE_LICH_KING,

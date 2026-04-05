@@ -493,23 +493,13 @@ void RandomPlayerbotMgr::AssignAccountTypes()
     rndBotTypeAccounts.clear();
     addClassTypeAccounts.clear();
 
-    // First, get ALL randombot accounts from the database
-    std::vector<uint32> allRandomBotAccounts;
-    QueryResult allAccounts = LoginDatabase.Query(
-        "SELECT id FROM account WHERE username LIKE '{}%%' ORDER BY id",
-        sPlayerbotAIConfig.randomBotAccountPrefix.c_str());
+    std::vector<uint32> allRandomBotAccounts =
+        RandomPlayerbotFactory::GetOwnedRandomBotAccounts();
 
-    if (allAccounts)
-    {
-        do
-        {
-            Field* fields = allAccounts->Fetch();
-            uint32 accountId = fields[0].Get<uint32>();
-            allRandomBotAccounts.push_back(accountId);
-        } while (allAccounts->NextRow());
-    }
-
-    LOG_INFO("playerbots", "Found {} total randombot accounts in database", allRandomBotAccounts.size());
+    LOG_INFO("playerbots",
+             "Found {} total randombot accounts owned by realm {}",
+             allRandomBotAccounts.size(),
+             RandomPlayerbotFactory::GetCurrentRealmId());
 
     // Check existing assignments
     QueryResult existingAssignments = PlayerbotsDatabase.Query("SELECT account_id, account_type FROM playerbots_account_type");
