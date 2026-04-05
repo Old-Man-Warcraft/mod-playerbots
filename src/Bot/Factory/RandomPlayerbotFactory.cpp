@@ -21,139 +21,137 @@
 
 namespace
 {
-    struct RealmCharacterCounts
+struct RealmCharacterCounts
+{
+    uint32 currentRealm = 0;
+    uint32 total = 0;
+    uint32 activeRealms = 0;
+    std::string activeRealmList;
+};
+
+std::string BuildAccountIdList(std::vector<uint32> const& accountIds)
+{
+    std::ostringstream out;
+
+    for (size_t i = 0; i < accountIds.size(); ++i)
     {
-        uint32 currentRealm = 0;
-        uint32 total = 0;
-        uint32 activeRealms = 0;
-        std::string activeRealmList;
-    };
+        if (i)
+            out << ',';
 
-    std::string BuildAccountIdList(std::vector<uint32> const& accountIds)
-    {
-        std::ostringstream out;
-
-        for (size_t i = 0; i < accountIds.size(); ++i)
-        {
-            if (i)
-                out << ',';
-
-            out << accountIds[i];
-        }
-
-        return out.str();
+        out << accountIds[i];
     }
 
-    std::optional<uint32> GetOwnedRealmId(uint32 accountId)
-    {
-        QueryResult result = LoginDatabase.Query(
-            "SELECT owner_realm_id FROM playerbots_account_ownership "
-            "WHERE account_id = {}",
-            accountId);
+    return out.str();
+}
 
-        if (!result)
-            return std::nullopt;
+std::optional<uint32> GetOwnedRealmId(uint32 accountId)
+{
+    QueryResult result = LoginDatabase.Query(
+        "SELECT owner_realm_id FROM playerbots_account_ownership "
+        "WHERE account_id = {}",
+        accountId);
 
-        return result->Fetch()[0].Get<uint32>();
-    }
+    if (!result)
+        return std::nullopt;
 
-    RealmCharacterCounts GetRealmCharacterCounts(uint32 accountId,
-                                                 uint32 realmId)
-    {
-        RealmCharacterCounts counts;
+    return result->Fetch()[0].Get<uint32>();
+}
 
-        QueryResult result = LoginDatabase.Query(
-            "SELECT COALESCE(SUM(CASE WHEN realmid = {} THEN numchars "
-            "ELSE 0 END), 0), COALESCE(SUM(numchars), 0), "
-            "COUNT(CASE WHEN numchars > 0 THEN 1 END), "
-            "COALESCE(GROUP_CONCAT(CASE WHEN numchars > 0 THEN realmid END "
-            "ORDER BY realmid SEPARATOR ','), '') "
-            "FROM realmcharacters WHERE acctid = {}",
-            realmId, accountId);
+RealmCharacterCounts GetRealmCharacterCounts(uint32 accountId, uint32 realmId)
+{
+    RealmCharacterCounts counts;
 
-        if (!result)
-            return counts;
+    QueryResult result = LoginDatabase.Query(
+        "SELECT COALESCE(SUM(CASE WHEN realmid = {} THEN numchars ELSE 0 END), 0), "
+        "COALESCE(SUM(numchars), 0), COUNT(CASE WHEN numchars > 0 THEN 1 END), "
+        "COALESCE(GROUP_CONCAT(CASE WHEN numchars > 0 THEN realmid END "
+        "ORDER BY realmid SEPARATOR ','), '') "
+        "FROM realmcharacters WHERE acctid = {}",
+        realmId, accountId);
 
-        Field* fields = result->Fetch();
-        counts.currentRealm = fields[0].Get<uint32>();
-        counts.total = fields[1].Get<uint32>();
-        counts.activeRealms = fields[2].Get<uint32>();
-        counts.activeRealmList = fields[3].Get<std::string>();
-
+    if (!result)
         return counts;
-    }
 
-    bool IsTrackedInLocalPlayerbotsDb(uint32 accountId)
+    Field* fields = result->Fetch();
+    counts.currentRealm = fields[0].Get<uint32>();
+    counts.total = fields[1].Get<uint32>();
+    counts.activeRealms = fields[2].Get<uint32>();
+    counts.activeRealmList = fields[3].Get<std::string>();
+
+    return counts;
+}
+
+bool IsTrackedInLocalPlayerbotsDb(uint32 accountId)
+{
+    return PlayerbotsDatabase.Query(
+        "SELECT 1 FROM playerbots_account_type WHERE account_id = {}",
+        accountId) != nullptr;
+}
+
+bool TryClaimOwnership(uint32 accountId, uint32 realmId)
+{
+    LoginDatabase.DirectExecute(
+        "INSERT IGNORE INTO playerbots_account_ownership "
+        "(account_id, owner_realm_id) VALUES ({}, {})",
+        accountId, realmId);
+
+    std::optional<uint32> ownerRealmId = GetOwnedRealmId(accountId);
+    return ownerRealmId && *ownerRealmId == realmId;
+}
+
+bool TryAdoptUnownedRandomBotAccount(uint32 accountId, uint32 realmId,
+                                     bool allowEmptyAccounts)
+{
+    if (std::optional<uint32> ownerRealmId = GetOwnedRealmId(accountId))
+        return *ownerRealmId == realmId;
+
+    RealmCharacterCounts counts = GetRealmCharacterCounts(accountId, realmId);
+    bool const hasLocalTracking = IsTrackedInLocalPlayerbotsDb(accountId);
+    bool const canClaimEmpty = allowEmptyAccounts && counts.total == 0;
+
+    if (counts.activeRealms > 1)
     {
-        return PlayerbotsDatabase.Query(
-            "SELECT 1 FROM playerbots_account_type WHERE account_id = {}",
-            accountId) != nullptr;
-    }
-
-    bool TryClaimOwnership(uint32 accountId, uint32 realmId)
-    {
-        LoginDatabase.DirectExecute(
-            "INSERT IGNORE INTO playerbots_account_ownership "
-            "(account_id, owner_realm_id) VALUES ({}, {})",
-            accountId, realmId);
-
-        std::optional<uint32> ownerRealmId = GetOwnedRealmId(accountId);
-        return ownerRealmId && *ownerRealmId == realmId;
-    }
-
-    bool TryAdoptUnownedRandomBotAccount(uint32 accountId, uint32 realmId,
-                                         bool allowEmptyAccounts)
-    {
-        if (std::optional<uint32> ownerRealmId = GetOwnedRealmId(accountId))
-            return *ownerRealmId == realmId;
-
-        RealmCharacterCounts counts = GetRealmCharacterCounts(accountId,
-                                                              realmId);
-        bool const hasLocalTracking = IsTrackedInLocalPlayerbotsDb(accountId);
-        bool const canClaimEmpty = allowEmptyAccounts && counts.total == 0;
-
-        if (counts.activeRealms > 1)
+        if (counts.currentRealm || hasLocalTracking)
         {
-            if (counts.currentRealm || hasLocalTracking)
-            {
-                LOG_WARN("playerbots",
-                         "Skipping ambiguous random bot account {}: it has "
-                         "characters on multiple realms ({})",
-                         accountId, counts.activeRealmList.c_str());
-            }
-
-            return false;
+            LOG_WARN("playerbots",
+                     "Skipping ambiguous random bot account {}: it has "
+                     "characters on multiple realms ({})",
+                     accountId, counts.activeRealmList.c_str());
         }
 
-        if (!counts.currentRealm && !hasLocalTracking && !canClaimEmpty)
-            return false;
-
-        return TryClaimOwnership(accountId, realmId);
+        return false;
     }
 
-    uint32 AdoptExistingRandomBotAccounts(uint32 realmId,
-                                          bool allowEmptyAccounts)
-    {
-        uint32 adoptedAccounts = 0;
-        QueryResult result = LoginDatabase.Query(
-            "SELECT id FROM account WHERE username LIKE '{}%%' ORDER BY id",
-            sPlayerbotAIConfig.randomBotAccountPrefix.c_str());
+    if (!counts.currentRealm && !hasLocalTracking && !canClaimEmpty)
+        return false;
 
-        if (!result)
-            return adoptedAccounts;
+    return TryClaimOwnership(accountId, realmId);
+}
 
-        do
-        {
-            uint32 const accountId = result->Fetch()[0].Get<uint32>();
+uint32 AdoptExistingRandomBotAccounts(uint32 realmId, bool allowEmptyAccounts)
+{
+    uint32 adoptedAccounts = 0;
+    QueryResult result = LoginDatabase.Query(
+        "SELECT id FROM account WHERE username LIKE '{}%%' ORDER BY id",
+        sPlayerbotAIConfig.randomBotAccountPrefix.c_str());
 
-            if (TryAdoptUnownedRandomBotAccount(accountId, realmId,
-                                                allowEmptyAccounts))
-                ++adoptedAccounts;
-        }
-        while (result->NextRow());
-
+    if (!result)
         return adoptedAccounts;
+
+    do
+    {
+        uint32 const accountId = result->Fetch()[0].Get<uint32>();
+
+        if (TryAdoptUnownedRandomBotAccount(accountId, realmId,
+                                            allowEmptyAccounts))
+        {
+            ++adoptedAccounts;
+        }
     }
+    while (result->NextRow());
+
+    return adoptedAccounts;
+}
 }
 
 constexpr RandomPlayerbotFactory::NameRaceAndGender RandomPlayerbotFactory::CombineRaceAndGender(uint8 race,
@@ -620,8 +618,8 @@ void RandomPlayerbotFactory::CreateRandomBots()
 
     if (sPlayerbotAIConfig.deleteRandomBotAccounts)
     {
-        uint32 const adoptedAccounts = AdoptExistingRandomBotAccounts(realmId,
-                                                                      false);
+        uint32 const adoptedAccounts =
+            AdoptExistingRandomBotAccounts(realmId, false);
         std::vector<uint32> botAccounts = GetOwnedRandomBotAccounts();
         std::string const botAccountList = BuildAccountIdList(botAccounts);
 
@@ -635,8 +633,7 @@ void RandomPlayerbotFactory::CreateRandomBots()
         PlayerbotsDatabase.Execute("DELETE FROM playerbots_random_bots");
         PlayerbotsDatabase.Execute("DELETE FROM playerbots_account_type");
 
-        std::string characterDBName =
-            CharacterDatabase.GetConnectionInfo()->database;
+        std::string characterDBName = CharacterDatabase.GetConnectionInfo()->database;
 
         if (!botAccountList.empty())
         {
@@ -754,8 +751,7 @@ void RandomPlayerbotFactory::CreateRandomBots()
         return;
     }
 
-    uint32 const adoptedAccounts = AdoptExistingRandomBotAccounts(realmId,
-                                                                  true);
+    uint32 const adoptedAccounts = AdoptExistingRandomBotAccounts(realmId, true);
 
     LOG_INFO("playerbots",
              "Creating random bot accounts for realm {} ({} adopted)...",
@@ -771,7 +767,8 @@ void RandomPlayerbotFactory::CreateRandomBots()
     uint32 timer = getMSTime();
 
     for (uint32 accountNumber = 0;
-         selectedAccountNames.size() < totalAccountCount; ++accountNumber)
+         selectedAccountNames.size() < totalAccountCount;
+         ++accountNumber)
     {
         std::ostringstream out;
         out << sPlayerbotAIConfig.randomBotAccountPrefix << accountNumber;
