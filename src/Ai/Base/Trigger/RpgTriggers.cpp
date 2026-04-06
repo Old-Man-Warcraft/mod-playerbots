@@ -136,7 +136,11 @@ bool RpgBuyTrigger::IsActive()
         if (AI_VALUE2(uint32, "item count", "usage " + std::to_string(ITEM_USAGE_AH)) > 0)
             return false;
 
-        return AI_VALUE(bool, "can sell");
+        return AI_VALUE2(uint32, "free money for", (uint32)NeedMoneyFor::gear) > 0 ||
+               AI_VALUE2(uint32, "free money for", (uint32)NeedMoneyFor::consumables) > 0 ||
+               AI_VALUE2(uint32, "free money for", (uint32)NeedMoneyFor::ammo) > 0 ||
+               AI_VALUE2(uint32, "free money for", (uint32)NeedMoneyFor::tradeskill) > 0 ||
+               AI_VALUE2(uint32, "free money for", (uint32)NeedMoneyFor::anything) > 0;
     }
 
     if (hasVendor && AI_VALUE(uint8, "durability") > 50)

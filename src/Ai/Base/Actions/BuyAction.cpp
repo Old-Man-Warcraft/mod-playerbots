@@ -13,7 +13,6 @@
 #include "ItemVisitors.h"
 #include "Log.h"
 #include "PlayerbotOperations.h"
-#include "PlayerbotTextMgr.h"
 #include "PlayerbotWorldThreadProcessor.h"
 #include "Playerbots.h"
 #include "StatsWeightCalculator.h"
@@ -37,12 +36,7 @@ bool BuyAction::Execute(Event event)
     }
 
     if (buyAuction)
-    {
-        if (!sPlayerbotAIConfig.enableAuctionHouseBotting)
-            return false;
-
         return BuyFromAuctionHouse();
-    }
 
     GuidVector vendors = botAI->GetAiObjectContext()->GetValue<GuidVector>("nearest npcs")->Get();
 
@@ -261,8 +255,7 @@ bool BuyAction::BuyFromAuctionHouse()
 
     if (!auctioneer)
     {
-        botAI->TellError(PlayerbotTextMgr::instance().GetBotTextOrDefault(
-            "auction_no_auctioneers_nearby", "There are no auctioneers nearby", {}));
+        LOG_DEBUG("playerbots", "BuyFromAuctionHouse: no auctioneer in range for {}", bot->GetName());
         return false;
     }
 
@@ -319,6 +312,7 @@ bool BuyAction::BuyAuction(ObjectGuid auctioneerGuid, AuctionEntry* auction)
     auto buyOp = std::make_unique<AuctionBuyOperation>(
         bot->GetGUID(), auctioneerGuid, auctionId, buyout, itemTemplateId);
 
+    // Queue on world thread; auction packet handling must run with map lock.
     return PlayerbotWorldThreadProcessor::instance().QueueOperation(
         std::move(buyOp));
 }

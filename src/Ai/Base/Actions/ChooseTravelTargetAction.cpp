@@ -65,12 +65,13 @@ void ChooseTravelTargetAction::getNewTarget(TravelTarget* newTarget, TravelTarge
         }
     }
 
-    // Visit auctioneers as part of normal RPG behavior
-    if (sPlayerbotAIConfig.enableAuctionHouseBotting && !foundTarget && bot->GetLevel() > 5)
+    // Visit auctioneers when we have AH-eligible items (no idle "window shopping" trips).
+    if (sPlayerbotAIConfig.enableAuctionHouseBotting && !foundTarget && bot->GetLevel() > 5 &&
+        (preferredAhItemCount > 0 || ahItemCount > 0))
     {
         if (preferredAhItemCount > 0)
             foundTarget = SetNpcFlagTarget(newTarget, { UNIT_NPC_FLAG_AUCTIONEER });
-        else if (ahItemCount > 0 ? urand(1, 100) <= 70 : urand(1, 100) <= 30)
+        else if (urand(1, 100) <= 70)
             foundTarget = SetNpcFlagTarget(newTarget, { UNIT_NPC_FLAG_AUCTIONEER });
     }
 

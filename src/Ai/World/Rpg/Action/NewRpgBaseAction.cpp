@@ -31,6 +31,8 @@
 #include "Timer.h"
 #include "TravelMgr.h"
 
+#include <limits>
+
 bool NewRpgBaseAction::MoveFarTo(WorldPosition dest)
 {
     if (dest == WorldPosition())
@@ -220,6 +222,8 @@ bool NewRpgBaseAction::ShouldTriggerAuctionHouseFromGrind()
     return ahItemCount >= sPlayerbotAIConfig.rpgGrindAuctionThreshold;
 }
 
+// Only used when the bot already carries enough ITEM_USAGE_AH items (threshold), so this
+// full scan runs infrequently compared to normal grind selection.
 WorldPosition NewRpgBaseAction::SelectAuctionHouseTravelPos()
 {
     WorldPosition botPos(bot);
@@ -681,6 +685,7 @@ ObjectGuid NewRpgBaseAction::ChooseNpcOrGameObjectToInteract(bool questgiverOnly
     if (!questgiverOnly && ahItemCount > 0)
     {
         WorldObject* nearestAuctioneer = nullptr;
+        float nearestDistSq = std::numeric_limits<float>::max();
         for (ObjectGuid& guid : possibleTargets)
         {
             Creature* creature = ObjectAccessor::GetCreature(*bot, guid);
@@ -693,8 +698,12 @@ ObjectGuid NewRpgBaseAction::ChooseNpcOrGameObjectToInteract(bool questgiverOnly
             if (distanceLimit && bot->GetDistance(creature) > distanceLimit)
                 continue;
 
-            if (!nearestAuctioneer || bot->GetExactDist(nearestAuctioneer) > bot->GetExactDist(creature))
+            float const distSq = bot->GetExactDistSq(*creature);
+            if (distSq < nearestDistSq)
+            {
+                nearestDistSq = distSq;
                 nearestAuctioneer = creature;
+            }
         }
 
         if (nearestAuctioneer)

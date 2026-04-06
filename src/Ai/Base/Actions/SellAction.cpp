@@ -324,6 +324,7 @@ bool SellAction::SellToAuctionHouse(Item* item)
         bot->GetGUID(), auctioneerGuid, item->GetGUID(), proto->ItemId,
         itemCount, startBid, buyout, etime);
 
+    // Queue on world thread; auction packet handling must run with map lock.
     return PlayerbotWorldThreadProcessor::instance().QueueOperation(
         std::move(sellOp));
 }
