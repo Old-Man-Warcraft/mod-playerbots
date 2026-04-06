@@ -8,6 +8,7 @@
 #include "G3D/Vector2.h"
 #include "GossipDef.h"
 #include "IVMapMgr.h"
+#include "LootObjectStack.h"
 #include "NewRpgInfo.h"
 #include "NewRpgStrategy.h"
 #include "Object.h"
@@ -62,7 +63,7 @@ bool NewRpgStatusUpdateAction::Execute(Event /*event*/)
     {
         case RPG_IDLE:
             return RandomChangeStatus({RPG_GO_CAMP, RPG_GO_GRIND, RPG_WANDER_RANDOM, RPG_WANDER_NPC, RPG_DO_QUEST,
-                                       RPG_TRAVEL_FLIGHT, RPG_REST});
+                                       RPG_TRAVEL_FLIGHT, RPG_FARMING, RPG_REST});
 
         case RPG_GO_GRIND:
         {
@@ -138,6 +139,15 @@ bool NewRpgStatusUpdateAction::Execute(Event /*event*/)
             }
             break;
         }
+        case RPG_FARMING:
+        {
+            if (info.HasStatusPersisted(statusFarmingDuration))
+            {
+                info.ChangeToIdle();
+                return true;
+            }
+            break;
+        }
         case RPG_REST:
         {
             // REST -> IDLE
@@ -171,6 +181,70 @@ bool NewRpgGoCampAction::Execute(Event /*event*/)
 
     if (auto* data = std::get_if<NewRpgInfo::GoCamp>(&botAI->rpgInfo.data))
         return MoveFarTo(data->pos);
+
+    return false;
+}
+
+bool NewRpgFarmingAction::Execute(Event /*event*/)
+{
+    if (auto* data = std::get_if<NewRpgInfo::Farming>(&botAI->rpgInfo.data))
+    {
+        if (data->pos == WorldPosition())
+            return false;
+
+        if (bot->IsInCombat())
+            return false;
+
+        if (data->gatheringNode)
+        {
+            LootObject loot(bot, data->gatheringNode);
+            SkillType skill = static_cast<SkillType>(loot.skillId);
+            if (!loot.IsEmpty() && loot.IsLootPossible(bot) && IsSupportedRpgGatheringSkill(skill))
+            {
+                QueueGatheringLoot(data->gatheringNode);
+
+                WorldObject* node = ObjectAccessor::GetWorldObject(*bot, data->gatheringNode);
+                if (node && !IsWithinInteractionDist(node))
+                    return MoveWorldObjectTo(data->gatheringNode);
+
+                return true;
+            }
+
+            if (sPlayerbotAIConfig.debugRpgGathering)
+            {
+                LOG_DEBUG("playerbots",
+                          "[New RPG][Gather] {} dropped tracked node {} because it is no longer gatherable",
+                          bot->GetName(), data->gatheringNode.ToString());
+            }
+
+            data->gatheringNode.Clear();
+        }
+
+        if (!data->lastGatherSearch ||
+            GetMSTimeDiffToNow(data->lastGatherSearch) >= sPlayerbotAIConfig.rpgGatheringSearchDelay)
+        {
+            data->lastGatherSearch = getMSTime();
+
+            if (ObjectGuid gatheringNode = FindNearbyGatheringTarget())
+            {
+                data->gatheringNode = gatheringNode;
+                QueueGatheringLoot(gatheringNode);
+
+                if (sPlayerbotAIConfig.debugRpgGathering)
+                {
+                    LOG_DEBUG("playerbots", "[New RPG][Gather] {} queued node {} while farming", bot->GetName(),
+                              gatheringNode.ToString());
+                }
+
+                return true;
+            }
+        }
+
+        if (bot->GetExactDist(data->pos) > 10.0f)
+            return MoveFarTo(data->pos);
+
+        return MoveRandomNear();
+    }
 
     return false;
 }

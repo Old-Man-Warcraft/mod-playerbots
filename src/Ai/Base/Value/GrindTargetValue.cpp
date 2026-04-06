@@ -53,6 +53,8 @@ Unit* GrindTargetValue::FindTargetForGrinding(uint32 assistCount)
 
     float distance = 0;
     Unit* result = nullptr;
+    bool farmingStatus = botAI->rpgInfo.GetStatus() == RPG_FARMING;
+    uint32 resultPriority = std::numeric_limits<uint32>::max();
     std::unordered_map<uint32, bool> needForQuestMap;
 
     for (ObjectGuid const guid : targets)
@@ -105,13 +107,15 @@ Unit* GrindTargetValue::FindTargetForGrinding(uint32 assistCount)
             continue;
         }
 
+        uint32 farmingPriority = std::numeric_limits<uint32>::max();
+        bool isFarmingTarget = farmingStatus && IsRpgFarmingTarget(unit, farmingPriority);
         bool inactiveGrindStatus = botAI->rpgInfo.GetStatus() != RPG_WANDER_RANDOM && botAI->rpgInfo.GetStatus() != RPG_IDLE;
 
         float aggroRange = 30.0f;
         if (unit->ToCreature())
             aggroRange = std::min(30.0f, unit->ToCreature()->GetAggroRange(bot) + 10.0f);
         bool outOfAggro = unit->ToCreature() && bot->GetDistance(unit) > aggroRange;
-        if (inactiveGrindStatus && outOfAggro)
+        if (inactiveGrindStatus && outOfAggro && !isFarmingTarget)
         {
             if (needForQuestMap.find(unit->GetEntry()) == needForQuestMap.end())
                 needForQuestMap[unit->GetEntry()] = needForQuest(unit);
@@ -130,25 +134,50 @@ Unit* GrindTargetValue::FindTargetForGrinding(uint32 assistCount)
                     continue;
 
                 float d = member->GetDistance(unit);
-                if (!result || d < distance)
+                uint32 priority = isFarmingTarget ? farmingPriority : std::numeric_limits<uint32>::max();
+                if (!result || priority < resultPriority || (priority == resultPriority && d < distance))
                 {
                     distance = d;
                     result = unit;
+                    resultPriority = priority;
                 }
             }
         }
         else
         {
             float newdistance = bot->GetDistance(unit);
-            if (!result || (newdistance < distance))
+            uint32 priority = isFarmingTarget ? farmingPriority : std::numeric_limits<uint32>::max();
+            if (!result || priority < resultPriority || (priority == resultPriority && newdistance < distance))
             {
                 distance = newdistance;
                 result = unit;
+                resultPriority = priority;
             }
         }
     }
 
     return result;
+}
+
+bool GrindTargetValue::IsRpgFarmingTarget(Unit* target, uint32& priority) const
+{
+    Creature* creature = target ? target->ToCreature() : nullptr;
+    if (!creature || !creature->IsAlive())
+        return false;
+
+    CreatureTemplate const* creatureTemplate = creature->GetCreatureTemplate();
+    if (!creatureTemplate)
+        return false;
+
+    bool clothTarget = botAI->HasSkill(SKILL_TAILORING) && creature->GetCreatureType() == CREATURE_TYPE_HUMANOID &&
+                       creatureTemplate->lootid;
+    bool leatherTarget = botAI->HasSkill(SKILL_SKINNING) && creatureTemplate->SkinLootId;
+
+    if (!clothTarget && !leatherTarget)
+        return false;
+
+    priority = leatherTarget ? 0u : 1u;
+    return true;
 }
 
 bool GrindTargetValue::needForQuest(Unit* target)

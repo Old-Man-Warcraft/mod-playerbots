@@ -21,6 +21,7 @@ public:
 private:
     uint32 GetTargetingPlayerCount(Unit* unit);
     Unit* FindTargetForGrinding(uint32 assistCount);
+    bool IsRpgFarmingTarget(Unit* target, uint32& priority) const;
     bool needForQuest(Unit* target);
 };
 
