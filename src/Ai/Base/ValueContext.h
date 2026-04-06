@@ -20,6 +20,7 @@
 #include "ChatValue.h"
 #include "CollisionValue.h"
 #include "CraftValue.h"
+#include "CraftPlanValue.h"
 #include "CurrentCcTargetValue.h"
 #include "CurrentTargetValue.h"
 #include "DistanceValue.h"
@@ -66,7 +67,6 @@
 #include "PartyMemberToDispel.h"
 #include "PartyMemberToHeal.h"
 #include "PartyMemberToResurrect.h"
-#include "PartyMemberSnaredTargetValue.h"
 #include "PartyMemberWithoutAuraValue.h"
 #include "PartyMemberWithoutItemValue.h"
 #include "PetTargetValue.h"
@@ -103,6 +103,7 @@ public:
     {
         creators["active spell"] = &ValueContext::active_spell;
         creators["craft"] = &ValueContext::craft;
+        creators["craft plan"] = &ValueContext::craft_plan;
         creators["collision"] = &ValueContext::collision;
         creators["skip spells list"] = &ValueContext::skip_spells_list_value;
         creators["nearest game objects"] = &ValueContext::nearest_game_objects;
@@ -153,7 +154,6 @@ public:
         creators["duel target"] = &ValueContext::duel_target;
         creators["party member to dispel"] = &ValueContext::party_member_to_dispel;
         creators["party member to protect"] = &ValueContext::party_member_to_protect;
-        creators["party member snared target"] = &ValueContext::party_member_snared_target;
         creators["health"] = &ValueContext::health;
         creators["rage"] = &ValueContext::rage;
         creators["energy"] = &ValueContext::energy;
@@ -347,6 +347,7 @@ private:
     static UntypedValue* active_spell(PlayerbotAI* botAI) { return new ActiveSpellValue(botAI); }
     static UntypedValue* group(PlayerbotAI* botAI) { return new IsInGroupValue(botAI); }
     static UntypedValue* craft(PlayerbotAI* botAI) { return new CraftValue(botAI); }
+    static UntypedValue* craft_plan(PlayerbotAI* botAI) { return new CraftPlanValue(botAI); }
     static UntypedValue* collision(PlayerbotAI* botAI) { return new CollisionValue(botAI); }
     static UntypedValue* already_seen_players(PlayerbotAI* botAI) { return new AlreadySeenPlayersValue(botAI); }
     static UntypedValue* new_player_nearby(PlayerbotAI* botAI) { return new NewPlayerNearbyValue(botAI); }
@@ -452,7 +453,6 @@ private:
     static UntypedValue* party_member_to_resurrect(PlayerbotAI* botAI) { return new PartyMemberToResurrect(botAI); }
     static UntypedValue* party_member_to_dispel(PlayerbotAI* botAI) { return new PartyMemberToDispel(botAI); }
     static UntypedValue* party_member_to_protect(PlayerbotAI* botAI) { return new PartyMemberToProtect(botAI); }
-    static UntypedValue* party_member_snared_target(PlayerbotAI* botAI) { return new PartyMemberSnaredTargetValue(botAI); }
     static UntypedValue* current_target(PlayerbotAI* botAI) { return new CurrentTargetValue(botAI); }
     static UntypedValue* old_target(PlayerbotAI* botAI) { return new CurrentTargetValue(botAI); }
     static UntypedValue* self_target(PlayerbotAI* botAI) { return new SelfTargetValue(botAI); }

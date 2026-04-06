@@ -6,6 +6,7 @@
 #include "CastCustomSpellAction.h"
 
 #include "ChatHelper.h"
+#include "CraftPlanValue.h"
 #include "Event.h"
 #include "ItemUsageValue.h"
 #include "Log.h"
@@ -340,6 +341,36 @@ bool CraftRandomItemAction::AcceptSpell(SpellInfo const* spellInfo)
                        usage == ITEM_USAGE_QUEST || usage == ITEM_USAGE_SKILL || usage == ITEM_USAGE_USE;
 
     return usefulCraft || ItemUsageValue::SpellGivesSkillUp(spellInfo->Id, bot);
+}
+
+bool CraftRandomItemAction::Execute(Event /*event*/)
+{
+    CraftPlan plan = AI_VALUE(CraftPlan, "craft plan");
+    if (plan.IsEmpty())
+        return false;
+
+    if (!botAI->CanCastSpell(plan.spellId, bot, true))
+        return false;
+
+    bool isCast = castSpell(plan.spellId, bot);
+    if (isCast)
+    {
+        SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(plan.spellId);
+        LOG_DEBUG("playerbots",
+                  "Bot {} crafted planned item {} with spell {} (score {}, purpose {}, skillUp {}, vendorProfit {}, reason: {})",
+                  bot->GetName().c_str(), plan.itemId, plan.spellId, plan.score,
+                  static_cast<uint32>(plan.purpose), plan.givesSkillUp, plan.hasVendorProfit, plan.reason);
+
+        if (spellInfo)
+        {
+            LOG_DEBUG("playerbots",
+                      "Bot {} planned craft spell {} ({}) creating item {} [upgradeDelta {}, ownedBest {}, reagentCost {}, scarceReagents {}]",
+                      bot->GetName().c_str(), plan.spellId, spellInfo->SpellName[0], plan.itemId,
+                      plan.upgradeDelta, plan.bestOwnedScore, plan.reagentBuyCost, plan.scarceReagentCount);
+        }
+    }
+
+    return isCast;
 }
 
 uint32 CraftRandomItemAction::GetSpellPriority(SpellInfo const* spellInfo)
