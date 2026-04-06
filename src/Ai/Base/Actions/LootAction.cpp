@@ -11,6 +11,7 @@
 #include "GuildTaskMgr.h"
 #include "ItemUsageValue.h"
 #include "LootObjectStack.h"
+#include "Log.h"
 #include "LootStrategyValue.h"
 #include "PlayerbotAIConfig.h"
 #include "Playerbots.h"
@@ -122,13 +123,41 @@ bool OpenLootAction::DoLoot(LootObject& lootObject)
         switch (skill)
         {
             case SKILL_ENGINEERING:
-                return botAI->HasSkill(SKILL_ENGINEERING) ? botAI->CastSpell(ENGINEERING, creature) : false;
+            {
+                bool result = botAI->HasSkill(SKILL_ENGINEERING) ? botAI->CastSpell(ENGINEERING, creature) : false;
+                if (result)
+                    LOG_DEBUG("playerbots",
+                              "Bot {} used engineering on corpse {} ({})",
+                              bot->GetName().c_str(), creature->GetName(), lootObject.guid.ToString());
+                return result;
+            }
             case SKILL_HERBALISM:
-                return botAI->HasSkill(SKILL_HERBALISM) ? botAI->CastSpell(32605, creature) : false;
+            {
+                bool result = botAI->HasSkill(SKILL_HERBALISM) ? botAI->CastSpell(32605, creature) : false;
+                if (result)
+                    LOG_DEBUG("playerbots",
+                              "Bot {} gathered herb corpse {} ({})",
+                              bot->GetName().c_str(), creature->GetName(), lootObject.guid.ToString());
+                return result;
+            }
             case SKILL_MINING:
-                return botAI->HasSkill(SKILL_MINING) ? botAI->CastSpell(32606, creature) : false;
+            {
+                bool result = botAI->HasSkill(SKILL_MINING) ? botAI->CastSpell(32606, creature) : false;
+                if (result)
+                    LOG_DEBUG("playerbots",
+                              "Bot {} mined corpse {} ({})",
+                              bot->GetName().c_str(), creature->GetName(), lootObject.guid.ToString());
+                return result;
+            }
             default:
-                return botAI->HasSkill(SKILL_SKINNING) ? botAI->CastSpell(SKINNING, creature) : false;
+            {
+                bool result = botAI->HasSkill(SKILL_SKINNING) ? botAI->CastSpell(SKINNING, creature) : false;
+                if (result)
+                    LOG_DEBUG("playerbots",
+                              "Bot {} skinned corpse {} ({})",
+                              bot->GetName().c_str(), creature->GetName(), lootObject.guid.ToString());
+                return result;
+            }
         }
     }
 
@@ -148,10 +177,24 @@ bool OpenLootAction::DoLoot(LootObject& lootObject)
         return false;
 
     if (lootObject.skillId == SKILL_MINING)
-        return botAI->HasSkill(SKILL_MINING) ? botAI->CastSpell(MINING, bot) : false;
+    {
+        bool result = botAI->HasSkill(SKILL_MINING) ? botAI->CastSpell(MINING, bot) : false;
+        if (result)
+            LOG_DEBUG("playerbots",
+                      "Bot {} started mining gameobject {} ({})",
+                      bot->GetName().c_str(), go ? go->GetName() : "unknown", lootObject.guid.ToString());
+        return result;
+    }
 
     if (lootObject.skillId == SKILL_HERBALISM)
-        return botAI->HasSkill(SKILL_HERBALISM) ? botAI->CastSpell(HERB_GATHERING, bot) : false;
+    {
+        bool result = botAI->HasSkill(SKILL_HERBALISM) ? botAI->CastSpell(HERB_GATHERING, bot) : false;
+        if (result)
+            LOG_DEBUG("playerbots",
+                      "Bot {} started herbalism on gameobject {} ({})",
+                      bot->GetName().c_str(), go ? go->GetName() : "unknown", lootObject.guid.ToString());
+        return result;
+    }
 
     uint32 spellId = GetOpeningSpell(lootObject);
     if (!spellId)

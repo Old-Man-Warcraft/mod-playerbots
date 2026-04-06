@@ -311,7 +311,7 @@ void AiFactory::AddDefaultCombatStrategies(Player* player, PlayerbotAI* const fa
             else
                 engine->addStrategiesNoInit("frost", nullptr);
 
-            engine->addStrategiesNoInit("dps", "dps assist", "cure", "cc", "aoe", nullptr);
+            engine->addStrategiesNoInit("dps", "dps assist", "cure", "aoe", nullptr);
             break;
         case CLASS_WARRIOR:
             if (tab == WARRIOR_TAB_PROTECTION)
@@ -363,7 +363,7 @@ void AiFactory::AddDefaultCombatStrategies(Player* player, PlayerbotAI* const fa
             else
                 engine->addStrategiesNoInit("surv", nullptr);
 
-            engine->addStrategiesNoInit("cc", "dps assist", "aoe", "bdps", nullptr);
+            engine->addStrategiesNoInit("cc", "dps assist", "aoe", nullptr);
             break;
         case CLASS_ROGUE:
             if (tab == ROGUE_TAB_ASSASSINATION || tab == ROGUE_TAB_SUBTLETY)
@@ -625,8 +625,8 @@ void AiFactory::AddDefaultNonCombatStrategies(Player* player, PlayerbotAI* const
             if (sPlayerbotAIConfig.randomBotJoinBG)
                 nonCombatEngine->addStrategy("bg", false);
 
-            // if (!master || GET_PLAYERBOT_AI(master))
-            //     nonCombatEngine->addStrategy("maintenance");
+            if (!master || GET_PLAYERBOT_AI(master))
+                nonCombatEngine->addStrategy("maintenance", false);
 
             nonCombatEngine->ChangeStrategy(sPlayerbotAIConfig.randomBotNonCombatStrategies);
         }
@@ -654,8 +654,8 @@ void AiFactory::AddDefaultNonCombatStrategies(Player* player, PlayerbotAI* const
                         //     nonCombatEngine->addStrategy("move random");
                         // }
 
-                        // if (masterBotAI)
-                        //     nonCombatEngine->addStrategy("maintenance");
+                        if (masterBotAI)
+                            nonCombatEngine->addStrategy("maintenance", false);
 
                         nonCombatEngine->ChangeStrategy(sPlayerbotAIConfig.randomBotNonCombatStrategies);
                     }
