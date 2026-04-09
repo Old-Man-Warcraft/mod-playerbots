@@ -4419,6 +4419,7 @@ std::vector<std::vector<uint32>> TravelMgr::GetOptimalFlightDestinations(Player*
                                             bot->GetTeamId());
     if (!fromNode)
         return validDestinations;
+
     std::vector<WorldLocation> candidateLocations;
     if (bot->GetLevel() >= 10 && urand(0, 100) < sPlayerbotAIConfig.probTeleToBankers * 100)
         candidateLocations = GetCityLocations(bot);
@@ -4649,9 +4650,9 @@ void TravelMgr::PrepareDestinationCache()
             (creatureTemplate->unit_flags & 4096) == 0 &&
             creatureTemplate->rank == 0)
         {
-            uint32 roundX = (x / 50.0f) * 10.0f;
-            uint32 roundY = (y / 50.0f) * 10.0f;
-            uint32 roundZ = (z / 50.0f) * 10.0f;
+            int32 roundX = static_cast<int32>(std::floor(x / 50.0f));
+            int32 roundY = static_cast<int32>(std::floor(y / 50.0f));
+            int32 roundZ = static_cast<int32>(std::floor(z / 50.0f));
             tempLocsCache[std::make_tuple(mapId, roundX, roundY, roundZ)].push_back(creatureData);
             tempCreatureCache[templateEntry][areaId].push_back(WorldLocation(mapId, x, y, z));
         }
@@ -4673,6 +4674,31 @@ void TravelMgr::PrepareDestinationCache()
                 if (forAlliance)
                     allianceFlightMasterCache[guid] = pos;
                 flightMastersCount++;
+
+                // Zones that have flight masters but no innkeepers — use flight master as hub
+                static const std::set<uint32> zonesWithoutInnkeeper = {
+                    4,    // Blasted Lands (52-57)
+                    16,   // Azshara (45-52)
+                    28,   // Western Plaguelands (50-60)
+                    46,   // Burning Steppes (51-60)
+                    51,   // Searing Gorge (45-51)
+                    361,  // Felwood (47-57)
+                    490,  // Un'Goro Crater (49-56)
+                    2817, // Crystalsong Forest (77-80)
+                    4197  // Wintergrasp (79-80)
+                };
+                if (zonesWithoutInnkeeper.count(areaId))
+                {
+                    LevelBracket bracket = zone2LevelBracket[areaId];
+                    WorldPosition loc(mapId, x + cos(orient) * 5.0f, y + sin(orient) * 5.0f, z + 0.5f, orient + M_PI);
+                    for (int i = bracket.low; i <= bracket.high; i++)
+                    {
+                        if (forHorde)
+                            hordeHubsPerLevelCache[i].push_back(loc);
+                        if (forAlliance)
+                            allianceHubsPerLevelCache[i].push_back(loc);
+                    }
+                }
             }
             else if (creatureTemplate->npcflag & UNIT_NPC_FLAG_INNKEEPER)
             {
@@ -4733,6 +4759,16 @@ void TravelMgr::PrepareDestinationCache()
         if (creatureDataList.size() > 2)
         {
             CreatureTemplate const* creatureTemplate = sObjectMgr->GetCreatureTemplate(creatureDataList[0].id1);
+            float totalX = 0.0f, totalY = 0.0f, totalZ = 0.0f;
+            for (CreatureData const& creatureData : creatureDataList)
+            {
+                totalX += creatureData.posX;
+                totalY += creatureData.posY;
+                totalZ += creatureData.posZ;
+            }
+
+            WorldLocation clusterCenter(std::get<0>(gridTuple), totalX / creatureDataList.size(),
+                                        totalY / creatureDataList.size(), totalZ / creatureDataList.size(), 0.0f);
             uint32 level = (creatureTemplate->minlevel + creatureTemplate->maxlevel + 1) / 2;
             for (int32 l = (int32)level - (int32)sPlayerbotAIConfig.randomBotTeleLowerLevel;
                  l <= (int32)level + (int32)sPlayerbotAIConfig.randomBotTeleHigherLevel; l++)
@@ -4740,7 +4776,7 @@ void TravelMgr::PrepareDestinationCache()
                 if (l < 1 || l > maxLevel)
                     continue;
 
-                locsPerLevelCache[(uint8)l].push_back(WorldLocation(std::get<0>(gridTuple)));
+                locsPerLevelCache[(uint8)l].push_back(clusterCenter);
             }
         }
     }

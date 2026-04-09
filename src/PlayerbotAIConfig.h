@@ -54,9 +54,11 @@ enum NewRpgStatus : int
     // Travel
 
     RPG_TRAVEL_FLIGHT = 6,
+    // Material farming and gathering loop
+    RPG_FARMING = 7,
     // Taking a break
-    RPG_REST = 7,
-    RPG_STATUS_END = 8
+    RPG_REST = 8,
+    RPG_STATUS_END = 9
 };
 
 #define MAX_SPECNO 20
@@ -334,6 +336,7 @@ public:
     bool disableDeathKnightLogin;
     bool limitTalentsExpansion;
     uint32 botActiveAlone;
+    uint32 BotActiveAloneDurationSeconds;
     uint32 BotActiveAloneForceWhenInRadius;
     bool BotActiveAloneForceWhenInZone;
     bool BotActiveAloneForceWhenInMap;
@@ -366,6 +369,10 @@ public:
     bool autoLearnTrainerSpells;
     bool autoDoQuests;
     bool enableNewRpgStrategy;
+    bool enableRpgGathering;
+    bool debugRpgGathering;
+    float rpgGatheringSearchRadius;
+    uint32 rpgGatheringSearchDelay;
     std::unordered_map<NewRpgStatus, uint32> RpgStatusProbWeight;
     bool syncLevelWithPlayers;
     bool autoLearnQuestSpells;
