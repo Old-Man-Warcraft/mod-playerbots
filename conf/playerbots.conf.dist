@@ -1058,6 +1058,7 @@ AiPlayerbot.RpgGatheringSearchDelay = 3000
 # TravelFlight  (Default: 15  Go to the nearest flightmaster and fly to a level-appropriate area)
 # Farming       (Default: 30  Farm mobs/materials (cloth, leather, ore, herbs))
 # Rest          (Default: 5   Take a break for a while and do nothing)
+# OutdoorPvp    (Default: 10  Participate in outdoor PvP capture points if already in an outdoor PvP zone)
 AiPlayerbot.RpgStatusProbWeight.WanderRandom = 15
 AiPlayerbot.RpgStatusProbWeight.WanderNpc = 20
 AiPlayerbot.RpgStatusProbWeight.GoGrind = 15
@@ -1066,6 +1067,7 @@ AiPlayerbot.RpgStatusProbWeight.DoQuest = 60
 AiPlayerbot.RpgStatusProbWeight.TravelFlight = 15
 AiPlayerbot.RpgStatusProbWeight.Farming = 30
 AiPlayerbot.RpgStatusProbWeight.Rest = 5
+AiPlayerbot.RpgStatusProbWeight.OutdoorPvp = 10
 
 # Bots' minimum and maximum level when teleporting in and out of a zone, according to the new RPG strategy
 # Format: AiPlayerbot.ZoneBracket.zoneID = minLevel,maxLevel

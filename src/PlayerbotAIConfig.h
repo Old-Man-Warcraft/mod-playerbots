@@ -58,6 +58,8 @@ enum NewRpgStatus : int
     RPG_FARMING = 7,
     // Taking a break
     RPG_REST = 8,
+    RPG_REST = 7,
+    RPG_OUTDOOR_PVP = 8,
     RPG_STATUS_END = 9
 };
 

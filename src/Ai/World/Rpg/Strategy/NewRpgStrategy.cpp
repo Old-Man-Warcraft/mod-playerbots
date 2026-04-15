@@ -70,6 +70,9 @@ void NewRpgStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
             "farming status",
             {
                 NextAction("new rpg farming", 3.0f)
+            "outdoor pvp status",
+            {
+                NextAction("new rpg outdoor pvp", 3.0f)
             }
         )
     );
