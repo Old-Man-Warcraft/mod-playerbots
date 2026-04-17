@@ -58,7 +58,8 @@ enum NewRpgStatus : int
     RPG_FARMING = 7,
     // Taking a break
     RPG_REST = 8,
-    RPG_STATUS_END = 9
+    RPG_OUTDOOR_PVP = 9,
+    RPG_STATUS_END = 10
 };
 
 #define MAX_SPECNO 20
