@@ -6,12 +6,23 @@
 #ifndef _PLAYERBOT_PLAYERBOTrpghook_H
 #define _PLAYERBOT_PLAYERBOTrpghook_H
 
+#include <algorithm>
+#include <string>
 #include <vector>
 
 #include "PlayerbotAIConfig.h"
 
 class Player;
 struct NewRpgInfo;
+
+/// Describes a custom RPG status candidate contributed by an external hook.
+/// @param tag     Opaque string identifier chosen by the hook (passed back via ExecuteCustomStatus).
+/// @param weight  Relative probability weight, same units as RpgStatusProbWeight config values.
+struct RpgStatusCandidate
+{
+    std::string tag;
+    uint32 weight{0};
+};
 
 /// Interface for external modules to observe and interact with the New RPG state machine.
 ///
@@ -36,6 +47,21 @@ public:
     /// @param bot   The bot being updated.
     /// @param info  Reference to the bot's live NewRpgInfo (may be mutated by the hook).
     virtual bool OnRpgStatusUpdate(Player* /*bot*/, NewRpgInfo& /*info*/) { return false; }
+
+    /// Called during RandomChangeStatus to let external modules inject additional status
+    /// candidates into the weighted lottery. Return an empty vector (default) to add nothing.
+    /// Each candidate has a string tag and a weight. If the hook's candidate wins the
+    /// lottery, ExecuteCustomStatus is called with that tag.
+    /// @param bot  The bot for which status candidates are being collected.
+    virtual std::vector<RpgStatusCandidate> GetExtraStatusCandidates(Player* /*bot*/) { return {}; }
+
+    /// Called when a candidate returned by GetExtraStatusCandidates wins the lottery.
+    /// The hook should apply the appropriate state change to info and return true on
+    /// success, false if the status cannot be executed (lottery will fall back to rest).
+    /// @param bot  The bot whose status should change.
+    /// @param info Reference to the bot's live NewRpgInfo.
+    /// @param tag  The tag from the winning RpgStatusCandidate.
+    virtual bool ExecuteCustomStatus(Player* /*bot*/, NewRpgInfo& /*info*/, std::string const& /*tag*/) { return false; }
 };
 
 /// Singleton registry for IPlayerbotRpgHook implementations.
@@ -78,6 +104,25 @@ public:
                 return true;
         }
         return false;
+    }
+
+    /// Collect extra status candidates from all hooks.
+    /// Each element is (hook*, candidate) so the winning hook can be dispatched.
+    std::vector<std::pair<IPlayerbotRpgHook*, RpgStatusCandidate>> CollectExtraCandidates(Player* bot)
+    {
+        std::vector<std::pair<IPlayerbotRpgHook*, RpgStatusCandidate>> result;
+        for (IPlayerbotRpgHook* hook : _hooks)
+        {
+            for (RpgStatusCandidate& c : hook->GetExtraStatusCandidates(bot))
+                result.emplace_back(hook, std::move(c));
+        }
+        return result;
+    }
+
+    /// Dispatch ExecuteCustomStatus to the hook that owns the winning candidate.
+    bool DispatchCustomStatus(Player* bot, NewRpgInfo& info, IPlayerbotRpgHook* owner, std::string const& tag)
+    {
+        return owner->ExecuteCustomStatus(bot, info, tag);
     }
 
     std::vector<IPlayerbotRpgHook*> const& GetHooks() const { return _hooks; }

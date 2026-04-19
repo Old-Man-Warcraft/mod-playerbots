@@ -20,6 +20,7 @@
 #include "Player.h"
 #include "PlayerbotAI.h"
 #include "PlayerbotAIConfig.h"
+#include "PlayerbotRpgHook.h"
 #include "Playerbots.h"
 #include "Position.h"
 #include "QuestDef.h"
@@ -1058,8 +1059,17 @@ bool NewRpgBaseAction::RandomChangeStatus(std::vector<NewRpgStatus> candidateSta
             probSum += sPlayerbotAIConfig.RpgStatusProbWeight[status];
         }
     }
+
+    // Collect extra candidates from registered hooks
+    auto hookCandidates = sPlayerbotRpgHookMgr.CollectExtraCandidates(bot);
+    for (auto const& [hook, candidate] : hookCandidates)
+    {
+        if (candidate.weight > 0)
+            probSum += candidate.weight;
+    }
+
     // Safety check. Default to "rest" if all RPG weights = 0
-    if (availableStatus.empty() || probSum == 0)
+    if ((availableStatus.empty() && hookCandidates.empty()) || probSum == 0)
     {
         botAI->rpgInfo.ChangeToRest();
         bot->SetStandState(UNIT_STAND_STATE_SIT);
@@ -1075,6 +1085,26 @@ bool NewRpgBaseAction::RandomChangeStatus(std::vector<NewRpgStatus> candidateSta
         {
             chosenStatus = status;
             break;
+        }
+    }
+
+    // Check if a hook candidate won the lottery
+    if (chosenStatus == RPG_STATUS_END)
+    {
+        for (auto const& [hook, candidate] : hookCandidates)
+        {
+            if (candidate.weight == 0)
+                continue;
+            accumulate += candidate.weight;
+            if (accumulate >= rand)
+            {
+                if (sPlayerbotRpgHookMgr.DispatchCustomStatus(bot, botAI->rpgInfo, hook, candidate.tag))
+                    return true;
+                // hook declined — fall through to rest
+                botAI->rpgInfo.ChangeToRest();
+                bot->SetStandState(UNIT_STAND_STATE_SIT);
+                return true;
+            }
         }
     }
 
