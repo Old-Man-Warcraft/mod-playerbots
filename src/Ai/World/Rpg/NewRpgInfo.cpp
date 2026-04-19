@@ -6,65 +6,92 @@
 
 void NewRpgInfo::ChangeToGoGrind(WorldPosition pos)
 {
+    NewRpgStatus oldStatus = GetStatus();
     startT = getMSTime();
     data = GoGrind{pos};
+    if (_onStatusChanged)
+        _onStatusChanged(oldStatus, RPG_GO_GRIND);
 }
 
 void NewRpgInfo::ChangeToGoCamp(WorldPosition pos)
 {
+    NewRpgStatus oldStatus = GetStatus();
     startT = getMSTime();
     data = GoCamp{pos};
+    if (_onStatusChanged)
+        _onStatusChanged(oldStatus, RPG_GO_CAMP);
 }
 
 void NewRpgInfo::ChangeToWanderNpc()
 {
+    NewRpgStatus oldStatus = GetStatus();
     startT = getMSTime();
     data = WanderNpc{};
+    if (_onStatusChanged)
+        _onStatusChanged(oldStatus, RPG_WANDER_NPC);
 }
 
 void NewRpgInfo::ChangeToWanderRandom()
 {
+    NewRpgStatus oldStatus = GetStatus();
     startT = getMSTime();
     data = WanderRandom{};
+    if (_onStatusChanged)
+        _onStatusChanged(oldStatus, RPG_WANDER_RANDOM);
 }
 
 void NewRpgInfo::ChangeToDoQuest(uint32 questId, const Quest* quest)
 {
+    NewRpgStatus oldStatus = GetStatus();
     startT = getMSTime();
     DoQuest do_quest;
     do_quest.questId = questId;
     do_quest.quest = quest;
     data = do_quest;
+    if (_onStatusChanged)
+        _onStatusChanged(oldStatus, RPG_DO_QUEST);
 }
 
 void NewRpgInfo::ChangeToTravelFlight(ObjectGuid fromFlightMaster, std::vector<uint32> path)
 {
+    NewRpgStatus oldStatus = GetStatus();
     startT = getMSTime();
     TravelFlight flight;
     flight.fromFlightMaster = fromFlightMaster;
     flight.path = std::move(path);
     flight.inFlight = false;
     data = flight;
+    if (_onStatusChanged)
+        _onStatusChanged(oldStatus, RPG_TRAVEL_FLIGHT);
 }
 
 void NewRpgInfo::ChangeToOutdoorPvp(ObjectGuid::LowType capturePointSpawnId)
 {
+    NewRpgStatus oldStatus = GetStatus();
     startT = getMSTime();
     OutdoorPvP pvp;
     pvp.capturePointSpawnId = capturePointSpawnId;
     data = pvp;
+    if (_onStatusChanged)
+        _onStatusChanged(oldStatus, RPG_OUTDOOR_PVP);
 }
 
 void NewRpgInfo::ChangeToRest()
 {
+    NewRpgStatus oldStatus = GetStatus();
     startT = getMSTime();
     data = Rest{};
+    if (_onStatusChanged)
+        _onStatusChanged(oldStatus, RPG_REST);
 }
 
 void NewRpgInfo::ChangeToIdle()
 {
+    NewRpgStatus oldStatus = GetStatus();
     startT = getMSTime();
     data = Idle{};
+    if (_onStatusChanged)
+        _onStatusChanged(oldStatus, RPG_IDLE);
 }
 
 bool NewRpgInfo::CanChangeTo(NewRpgStatus)
@@ -74,8 +101,11 @@ bool NewRpgInfo::CanChangeTo(NewRpgStatus)
 
 void NewRpgInfo::Reset()
 {
+    NewRpgStatus oldStatus = GetStatus();
     data = Idle{};
     startT = getMSTime();
+    if (_onStatusChanged)
+        _onStatusChanged(oldStatus, RPG_IDLE);
 }
 
 void NewRpgInfo::SetMoveFarTo(WorldPosition pos)

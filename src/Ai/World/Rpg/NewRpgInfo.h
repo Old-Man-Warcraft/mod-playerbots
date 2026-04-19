@@ -1,6 +1,8 @@
 #ifndef _PLAYERBOT_NEWRPGINFO_H
 #define _PLAYERBOT_NEWRPGINFO_H
 
+#include <functional>
+
 #include "Define.h"
 #include "ObjectGuid.h"
 #include "ObjectMgr.h"
@@ -67,6 +69,11 @@ struct NewRpgInfo
     {
     };
 
+    /// Optional callback invoked by every ChangeTo* method with (oldStatus, newStatus).
+    /// Set once by PlayerbotAI at bot initialisation — do not call directly.
+    using StatusChangedFn = std::function<void(NewRpgStatus, NewRpgStatus)>;
+    void SetStatusChangedCallback(StatusChangedFn fn) { _onStatusChanged = std::move(fn); }
+
     uint32 startT{0};  // start timestamp of the current status
 
     // MOVE_FAR
@@ -104,6 +111,9 @@ struct NewRpgInfo
     void Reset();
     void SetMoveFarTo(WorldPosition pos);
     std::string ToString();
+
+private:
+    StatusChangedFn _onStatusChanged;
 };
 
 struct NewRpgStatistic

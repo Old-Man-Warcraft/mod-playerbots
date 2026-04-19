@@ -1,5 +1,7 @@
 #include "NewRpgAction.h"
 
+#include "PlayerbotRpgHook.h"
+
 #include <cmath>
 #include <cstdlib>
 
@@ -57,6 +59,8 @@ bool StartRpgDoQuestAction::Execute(Event event)
 bool NewRpgStatusUpdateAction::Execute(Event /*event*/)
 {
     NewRpgInfo& info = botAI->rpgInfo;
+    if (sPlayerbotRpgHookMgr.NotifyStatusUpdate(bot, info))
+        return true;
     NewRpgStatus status = info.GetStatus();
     switch (status)
     {

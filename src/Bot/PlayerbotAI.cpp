@@ -33,6 +33,7 @@
 #include "MotionMaster.h"
 #include "MoveSplineInit.h"
 #include "NewRpgStrategy.h"
+#include "PlayerbotRpgHook.h"
 #include "ObjectGuid.h"
 #include "ObjectMgr.h"
 #include "PerfMonitor.h"
@@ -217,6 +218,10 @@ PlayerbotAI::PlayerbotAI(Player* bot)
     // SMSG_QUESTUPDATE_ADD_ITEM no longer used
     // botOutgoingPacketHandlers.AddHandler(SMSG_QUESTUPDATE_ADD_ITEM, "quest update add item");
     botOutgoingPacketHandlers.AddHandler(SMSG_QUEST_CONFIRM_ACCEPT, "confirm quest");
+
+    rpgInfo.SetStatusChangedCallback([this](NewRpgStatus oldStatus, NewRpgStatus newStatus) {
+        sPlayerbotRpgHookMgr.NotifyStatusChanged(bot, oldStatus, newStatus);
+    });
 }
 
 PlayerbotAI::~PlayerbotAI()
@@ -877,6 +882,9 @@ void PlayerbotAI::Reset(bool full)
         aiObjectContext->GetValue<TravelTarget*>("travel target")->Get()->setStatus(TRAVEL_STATUS_EXPIRED);
         aiObjectContext->GetValue<TravelTarget*>("travel target")->Get()->setExpireIn(1000);
         rpgInfo = NewRpgInfo();
+        rpgInfo.SetStatusChangedCallback([this](NewRpgStatus oldStatus, NewRpgStatus newStatus) {
+            sPlayerbotRpgHookMgr.NotifyStatusChanged(bot, oldStatus, newStatus);
+        });
     }
 
     aiObjectContext->GetValue<GuidSet&>("ignore rpg target")->Get().clear();
