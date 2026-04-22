@@ -129,6 +129,7 @@ PlayerbotAI::PlayerbotAI(Player* bot)
     : PlayerbotAIBase(true),
       bot(bot),
       master(nullptr),
+    botGuid(bot ? bot->GetGUID() : ObjectGuid::Empty),
       chatHelper(this),
       chatFilter(this),
       security(bot)  // reorder args - whipowill
@@ -230,8 +231,8 @@ PlayerbotAI::~PlayerbotAI()
     if (aiObjectContext)
         delete aiObjectContext;
 
-    if (bot)
-        PlayerbotsMgr::instance().RemovePlayerBotData(bot->GetGUID(), true);
+    if (botGuid != ObjectGuid::Empty)
+        PlayerbotsMgr::instance().RemovePlayerBotData(botGuid, true);
 }
 
 void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)

@@ -1166,7 +1166,8 @@ bool IccLichKingWinterTrigger::IsActive()
 
 bool IccLichKingAddsTrigger::IsActive()
 {
-    Unit* boss = AI_VALUE2(Unit*, "find target", "the lich king");
+    if (bot->HasAura(SPELL_HARVEST_SOUL_VALKYR))
+        return false;
 
     bool hasPlague = botAI->HasAura("Necrotic Plague", bot);
     if (hasPlague)
@@ -1178,8 +1179,14 @@ bool IccLichKingAddsTrigger::IsActive()
     if (terenasMenethilHC)
         return true;
 
-     if (terenasMenethil)
+    if (terenasMenethil)
         return true;
+
+    Unit* valithria = bot->FindNearestCreature(NPC_VALITHRIA_DREAMWALKER, 100.0f);
+    if (valithria)
+        return false;
+
+    Unit* boss = AI_VALUE2(Unit*, "find target", "the lich king");
 
     if (!boss)
         return false;

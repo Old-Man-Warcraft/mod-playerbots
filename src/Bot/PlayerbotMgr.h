@@ -91,6 +91,7 @@ protected:
 
 private:
     Player* const master;
+    ObjectGuid masterGuid;
     PlayerBotErrorMap errors;
     time_t lastErrorTell;
 };
@@ -109,6 +110,8 @@ public:
 
     PlayerbotAI* GetPlayerbotAI(Player* player);
     PlayerbotMgr* GetPlayerbotMgr(Player* player);
+    PlayerbotAI* GetPlayerbotAIByPlayerPointer(Player* player);
+    PlayerbotMgr* GetPlayerbotMgrByPlayerPointer(Player* player);
 
 private:
     PlayerbotsMgr() = default;

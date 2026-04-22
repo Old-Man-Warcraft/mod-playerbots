@@ -656,6 +656,9 @@ float IccSindragosaMultiplier::GetValue(Action* action)
 
 float IccLichKingAddsMultiplier::GetValue(Action* action)
 {
+    if (bot->FindNearestCreature(NPC_VALITHRIA_DREAMWALKER, 100.0f))
+        return 1.0f;
+
     Unit* terenasMenethilHC = bot->FindNearestCreature(NPC_TERENAS_MENETHIL_HC, 55.0f);
 
     if (!terenasMenethilHC)

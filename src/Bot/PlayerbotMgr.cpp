@@ -1460,12 +1460,13 @@ uint32 PlayerbotHolder::GetPlayerbotsCountByClass(uint32 cls)
     return count;
 }
 
-PlayerbotMgr::PlayerbotMgr(Player* const master) : PlayerbotHolder(), master(master), lastErrorTell(0) {}
+PlayerbotMgr::PlayerbotMgr(Player* const master)
+    : PlayerbotHolder(), master(master), masterGuid(master ? master->GetGUID() : ObjectGuid::Empty), lastErrorTell(0) {}
 
 PlayerbotMgr::~PlayerbotMgr()
 {
-    if (master)
-        PlayerbotsMgr::instance().RemovePlayerBotData(master->GetGUID(), false);
+    if (masterGuid != ObjectGuid::Empty)
+        PlayerbotsMgr::instance().RemovePlayerBotData(masterGuid, false);
 }
 
 void PlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool /*minimal*/)
@@ -1766,6 +1767,26 @@ PlayerbotAI* PlayerbotsMgr::GetPlayerbotAI(Player* player)
     return nullptr;
 }
 
+PlayerbotAI* PlayerbotsMgr::GetPlayerbotAIByPlayerPointer(Player* player)
+{
+    if (!(sPlayerbotAIConfig.enabled) || !player)
+        return nullptr;
+
+    for (auto const& [guid, playerbot] : _playerbotsAIMap)
+    {
+        (void)guid;
+
+        if (!playerbot->IsBotAI())
+            continue;
+
+        PlayerbotAI* botAI = static_cast<PlayerbotAI*>(playerbot);
+        if (botAI->GetBot() == player)
+            return botAI;
+    }
+
+    return nullptr;
+}
+
 PlayerbotMgr* PlayerbotsMgr::GetPlayerbotMgr(Player* player)
 {
     if (!(sPlayerbotAIConfig.enabled) || !player)
@@ -1777,6 +1798,26 @@ PlayerbotMgr* PlayerbotsMgr::GetPlayerbotMgr(Player* player)
     {
         if (!itr->second->IsBotAI())
             return dynamic_cast<PlayerbotMgr*>(itr->second);
+    }
+
+    return nullptr;
+}
+
+PlayerbotMgr* PlayerbotsMgr::GetPlayerbotMgrByPlayerPointer(Player* player)
+{
+    if (!(sPlayerbotAIConfig.enabled) || !player)
+        return nullptr;
+
+    for (auto const& [guid, playerbot] : _playerbotsMgrMap)
+    {
+        (void)guid;
+
+        if (playerbot->IsBotAI())
+            continue;
+
+        PlayerbotMgr* playerbotMgr = static_cast<PlayerbotMgr*>(playerbot);
+        if (playerbotMgr->GetMaster() == player)
+            return playerbotMgr;
     }
 
     return nullptr;
