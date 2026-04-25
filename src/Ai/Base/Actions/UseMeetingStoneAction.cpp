@@ -9,6 +9,8 @@
 #include "Event.h"
 #include "GridNotifiers.h"
 #include "GridNotifiersImpl.h"
+#include "Log.h"
+#include "Map.h"
 #include "NearestGameObjects.h"
 #include "PlayerbotAIConfig.h"
 #include "Playerbots.h"
@@ -209,7 +211,34 @@ bool SummonAction::Teleport(Player* summoner, Player* player, bool preserveAuras
                 if (!preserveAuras)
                     player->RemoveAurasWithInterruptFlags(AURA_INTERRUPT_FLAG_TELEPORTED |
                                                           AURA_INTERRUPT_FLAG_CHANGE_MAP);
-                player->TeleportTo(mapId, x, y, z, 0);
+
+                // Instance id resolution uses the *teleporting* player's difficulty when looking up the
+                // leader's bind (InstanceSaveMgr::PlayerGetDestinationInstanceId). Match the master so we
+                // join the same copy (e.g. map 533 Naxx 40 vs WotLK Naxx via raid difficulty).
+                if (Map* sMap = summoner->GetMap())
+                {
+                    if (sMap->Instanceable())
+                    {
+                        if (sMap->IsRaid() && player->GetRaidDifficulty() != summoner->GetRaidDifficulty())
+                            player->SetRaidDifficulty(summoner->GetRaidDifficulty());
+                        if (sMap->IsNonRaidDungeon() &&
+                            player->GetDungeonDifficulty() != summoner->GetDungeonDifficulty())
+                            player->SetDungeonDifficulty(summoner->GetDungeonDifficulty());
+                    }
+                }
+
+                if (!player->TeleportTo(mapId, x, y, z, 0.0f, 0, summoner))
+                {
+                    LOG_INFO(
+                        "playerbots",
+                        "SummonAction::Teleport failed: bot {} could not TeleportTo master {} map {} (bot raidDiff={}, master raidDiff={})",
+                        player->GetName(), summoner->GetName(), mapId,
+                        static_cast<uint32>(player->GetRaidDifficulty()),
+                        static_cast<uint32>(summoner->GetRaidDifficulty()));
+                    botAI->TellError(
+                        "Could not teleport to master (instance blocked or raid difficulty mismatch).");
+                    return false;
+                }
                 if (player->GetPet())
                     player->GetPet()->NearTeleportTo(x, y, z, player->GetOrientation());
                 if (player->GetGuardianPet())

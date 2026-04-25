@@ -312,12 +312,14 @@ public:
 
     void OnDestructPlayer(Player* player) override
     {
-        PlayerbotAI* botAI = PlayerbotsMgr::instance().GetPlayerbotAI(player);
+        // Player::~Player() invokes this hook during teardown, so avoid re-reading
+        // fields like GUID from the partially destructed player object.
+        PlayerbotAI* botAI = PlayerbotsMgr::instance().GetPlayerbotAIByPlayerPointer(player);
 
         if (botAI != nullptr)
             delete botAI;
 
-        if (PlayerbotMgr* playerbotMgr = GET_PLAYERBOT_MGR(player))
+        if (PlayerbotMgr* playerbotMgr = PlayerbotsMgr::instance().GetPlayerbotMgrByPlayerPointer(player))
             delete playerbotMgr;
     }
 };
