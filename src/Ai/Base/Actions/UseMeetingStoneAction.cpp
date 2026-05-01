@@ -63,7 +63,7 @@ bool SummonAction::Execute(Event /*event*/)
     if (!master)
         return false;
 
-    if (Pet* pet = bot->GetPet())
+    if (bot->GetPet())
         botAI->PetFollow();
 
     if (master->GetSession()->GetSecurity() >= SEC_PLAYER)

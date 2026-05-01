@@ -119,6 +119,7 @@ bool ChooseRpgTargetAction::Execute(Event /*event*/)
     GuidPosition masterRpgTarget;
     if (master && master != bot && GET_PLAYERBOT_AI(master) && master->GetMapId() == bot->GetMapId() && !master->IsBeingTeleported())
     {
+        //TODO Implement
         Player* player = botAI->GetMaster();
         //GuidPosition masterRpgTarget = PAI_VALUE(GuidPosition, "rpg target"); //not used, line marked for removal.
     }
