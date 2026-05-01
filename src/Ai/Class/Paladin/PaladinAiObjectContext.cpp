@@ -12,6 +12,7 @@
 #include "OffhealRetPaladinStrategy.h"
 #include "PaladinActions.h"
 #include "PaladinBuffStrategies.h"
+#include "PaladinPullStrategy.h"
 #include "PaladinTriggers.h"
 #include "Playerbots.h"
 #include "TankPaladinStrategy.h"
@@ -22,6 +23,7 @@ public:
     PaladinStrategyFactoryInternal()
     {
         creators["nc"] = &PaladinStrategyFactoryInternal::nc;
+        creators["pull"] = &PaladinStrategyFactoryInternal::pull;
         creators["cure"] = &PaladinStrategyFactoryInternal::cure;
         creators["boost"] = &PaladinStrategyFactoryInternal::boost;
         creators["cc"] = &PaladinStrategyFactoryInternal::cc;
@@ -31,6 +33,7 @@ public:
 
 private:
     static Strategy* nc(PlayerbotAI* botAI) { return new GenericPaladinNonCombatStrategy(botAI); }
+    static Strategy* pull(PlayerbotAI* botAI) { return new PaladinPullStrategy(botAI); }
     static Strategy* cure(PlayerbotAI* botAI) { return new PaladinCureStrategy(botAI); }
     static Strategy* boost(PlayerbotAI* botAI) { return new PaladinBoostStrategy(botAI); }
     static Strategy* cc(PlayerbotAI* botAI) { return new PaladinCcStrategy(botAI); }
@@ -134,6 +137,7 @@ public:
             &PaladinTriggerFactoryInternal::hammer_of_justice_on_snare_target;
         creators["not sensing undead"] = &PaladinTriggerFactoryInternal::not_sensing_undead;
         creators["divine favor"] = &PaladinTriggerFactoryInternal::divine_favor;
+        creators["divine shield low health"] = &PaladinTriggerFactoryInternal::divine_shield_low_health;
         creators["turn undead"] = &PaladinTriggerFactoryInternal::turn_undead;
         creators["avenger's shield"] = &PaladinTriggerFactoryInternal::avenger_shield;
         creators["consecration"] = &PaladinTriggerFactoryInternal::consecration;
@@ -156,6 +160,7 @@ private:
     static Trigger* not_sensing_undead(PlayerbotAI* botAI) { return new NotSensingUndeadTrigger(botAI); }
     static Trigger* turn_undead(PlayerbotAI* botAI) { return new TurnUndeadTrigger(botAI); }
     static Trigger* divine_favor(PlayerbotAI* botAI) { return new DivineFavorTrigger(botAI); }
+    static Trigger* divine_shield_low_health(PlayerbotAI* botAI) { return new DivineShieldLowHealthTrigger(botAI); }
     static Trigger* holy_shield(PlayerbotAI* botAI) { return new HolyShieldTrigger(botAI); }
     static Trigger* righteous_fury(PlayerbotAI* botAI) { return new RighteousFuryTrigger(botAI); }
     static Trigger* judgement(PlayerbotAI* botAI) { return new JudgementTrigger(botAI); }
