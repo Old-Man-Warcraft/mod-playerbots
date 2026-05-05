@@ -7,14 +7,30 @@
 #define _PLAYERBOT_PLAYERBOTrpghook_H
 
 #include <algorithm>
+#include <array>
 #include <shared_mutex>
 #include <string>
 #include <vector>
 
+#include "Player.h"
 #include "PlayerbotAIConfig.h"
 
-class Player;
 struct NewRpgInfo;
+
+/// Lightweight snapshot of a bot's current world position.
+struct PlayerbotCoordinate
+{
+    uint32 mapId{0};
+    float x{0.0f};
+    float y{0.0f};
+    float z{0.0f};
+    float orientation{0.0f};
+
+    std::array<float, 5> ToArray() const
+    {
+        return {static_cast<float>(mapId), x, y, z, orientation};
+    }
+};
 
 /// Describes a custom RPG status candidate contributed by an external hook.
 /// @param tag     Opaque string identifier chosen by the hook (passed back via ExecuteCustomStatus).
@@ -63,6 +79,11 @@ public:
     /// @param info Reference to the bot's live NewRpgInfo.
     /// @param tag  The tag from the winning RpgStatusCandidate.
     virtual bool ExecuteCustomStatus(Player* /*bot*/, NewRpgInfo& /*info*/, std::string const& /*tag*/) { return false; }
+
+    /// Called when a module explicitly requests the bot's current coordinate snapshot.
+    /// @param bot         The bot being queried.
+    /// @param coordinate  The bot's current map/x/y/z/orientation snapshot.
+    virtual void OnPlayerbotCoordinateSnapshot(Player* /*bot*/, PlayerbotCoordinate const& /*coordinate*/) {}
 };
 
 /// Singleton registry for IPlayerbotRpgHook implementations.
@@ -145,6 +166,32 @@ public:
 
         std::shared_lock<std::shared_mutex> guard(_hooksLock);
         return owner->ExecuteCustomStatus(bot, info, tag);
+    }
+
+    static PlayerbotCoordinate GetCurrentCoordinate(Player* bot)
+    {
+        if (!bot)
+            return {};
+
+        return {
+            bot->GetMapId(),
+            bot->GetPositionX(),
+            bot->GetPositionY(),
+            bot->GetPositionZ(),
+            bot->GetOrientation(),
+        };
+    }
+
+    void NotifyCoordinateSnapshot(Player* bot)
+    {
+        if (!sPlayerbotAIConfig.enableRpgHooks || !bot)
+            return;
+
+        PlayerbotCoordinate const coordinate = GetCurrentCoordinate(bot);
+
+        std::shared_lock<std::shared_mutex> guard(_hooksLock);
+        for (IPlayerbotRpgHook* hook : _hooks)
+            hook->OnPlayerbotCoordinateSnapshot(bot, coordinate);
     }
 
     std::vector<IPlayerbotRpgHook*> GetHooks() const

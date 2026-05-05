@@ -46,7 +46,25 @@
 ///   // At module shutdown (e.g. WorldScript::OnShutdown):
 ///   sPlayerbotRpgHookMgr.UnregisterHook(&s_myHook);
 ///
-/// 4. Read structured performance monitor data:
+/// 4. Read a bot's current coordinate snapshot:
+///
+///   PlayerbotCoordinate coord = PlayerbotRpgHookMgr::GetCurrentCoordinate(player);
+///   auto values = coord.ToArray(); // { mapId, x, y, z, orientation }
+///
+/// 5. Observe coordinate snapshots on demand:
+///
+///   class MyCoordHook : public IPlayerbotRpgHook
+///   {
+///   public:
+///       void OnPlayerbotCoordinateSnapshot(Player* bot, PlayerbotCoordinate const& coordinate) override
+///       {
+///           // react here
+///       }
+///   };
+///
+///   sPlayerbotRpgHookMgr.NotifyCoordinateSnapshot(player);
+///
+/// 6. Read structured performance monitor data:
 ///
 ///   PerfMonitorReport report = sPerfMonitor.BuildReport(false, false);
 ///   for (PerfMonitorReportRow const& row : report.rows)
@@ -54,7 +72,7 @@
 ///       // row.name, row.percentage, row.totalSeconds, row.averageMilliseconds
 ///   }
 ///
-/// 5. Observe live performance samples:
+/// 7. Observe live performance samples:
 ///
 ///   class MyPerfHook : public IPlayerbotPerfHook
 ///   {
