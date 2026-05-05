@@ -220,7 +220,7 @@ PlayerbotAI::PlayerbotAI(Player* bot)
     botOutgoingPacketHandlers.AddHandler(SMSG_QUEST_CONFIRM_ACCEPT, "confirm quest");
 
     rpgInfo.SetStatusChangedCallback([this](NewRpgStatus oldStatus, NewRpgStatus newStatus) {
-        sPlayerbotRpgHookMgr.NotifyStatusChanged(bot, oldStatus, newStatus);
+        sPlayerbotRpgHookMgr.NotifyStatusChanged(this->bot, oldStatus, newStatus);
     });
 }
 
@@ -893,7 +893,7 @@ void PlayerbotAI::Reset(bool full)
         aiObjectContext->GetValue<TravelTarget*>("travel target")->Get()->setExpireIn(1000);
         rpgInfo = NewRpgInfo();
         rpgInfo.SetStatusChangedCallback([this](NewRpgStatus oldStatus, NewRpgStatus newStatus) {
-            sPlayerbotRpgHookMgr.NotifyStatusChanged(bot, oldStatus, newStatus);
+            sPlayerbotRpgHookMgr.NotifyStatusChanged(this->bot, oldStatus, newStatus);
         });
     }
 
