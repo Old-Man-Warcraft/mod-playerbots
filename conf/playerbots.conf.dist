@@ -2224,6 +2224,17 @@ AiPlayerbot.TellWhenAvoidAoe = 0
 # Enable/Disable performance monitor
 AiPlayerbot.PerfMonEnabled = 0
 
+# Enable external RPG API hooks.
+# Default: 0 (disabled)
+# When disabled, the RPG hook manager short-circuits before calling external
+# modules, keeping overhead on the bot update thread minimal.
+AiPlayerbot.EnableRpgHooks = 0
+
+# Enable external performance API hooks.
+# Default: 0 (disabled)
+# Requires AiPlayerbot.PerfMonEnabled = 1 for live performance callbacks.
+AiPlayerbot.EnablePerfHooks = 0
+
 #
 #
 #

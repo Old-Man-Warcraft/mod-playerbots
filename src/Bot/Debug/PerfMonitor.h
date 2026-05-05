@@ -8,10 +8,11 @@
 
 #include <chrono>
 #include <ctime>
+#include <cstdint>
 #include <map>
 #include <mutex>
+#include <string>
 #include <vector>
-#include <cstdint>
 
 typedef std::vector<std::string> PerformanceStack;
 
@@ -24,6 +25,14 @@ struct PerformanceData
     std::mutex lock;
 };
 
+struct PerfMonitorStatSnapshot
+{
+    uint64_t minTime{0};
+    uint64_t maxTime{0};
+    uint64_t totalTime{0};
+    uint32_t count{0};
+};
+
 enum PerformanceMetric
 {
     PERF_MON_TRIGGER,
@@ -33,15 +42,53 @@ enum PerformanceMetric
     PERF_MON_TOTAL
 };
 
+struct PerfMetricRecord
+{
+    PerformanceMetric metric{PERF_MON_TOTAL};
+    std::string name;
+    std::string stackName;
+    uint64_t elapsedUs{0};
+    PerfMonitorStatSnapshot aggregate;
+};
+
+struct PerfMonitorReportRow
+{
+    PerformanceMetric metric{PERF_MON_TOTAL};
+    std::string metricLabel;
+    std::string name;
+    PerfMonitorStatSnapshot stats;
+    double percentage{0.0};
+    double totalSeconds{0.0};
+    double perTickMilliseconds{0.0};
+    double minMilliseconds{0.0};
+    double maxMilliseconds{0.0};
+    double averageMilliseconds{0.0};
+    double amount{0.0};
+    bool isSummary{false};
+};
+
+struct PerfMonitorReport
+{
+    bool perTick{false};
+    bool fullStack{false};
+    uint64_t referenceTotalTime{0};
+    double referenceCount{0.0};
+    std::vector<PerfMonitorReportRow> rows;
+};
+
 class PerfMonitorOperation
 {
 public:
-    PerfMonitorOperation(PerformanceData* data, std::string const name, PerformanceStack* stack);
+    PerfMonitorOperation(PerformanceData* data, PerformanceMetric metric,
+                         std::string const name, std::string const stackName,
+                         PerformanceStack* stack);
     void finish();
 
 private:
     PerformanceData* data;
+    PerformanceMetric metric;
     std::string const name;
+    std::string const stackName;
     PerformanceStack* stack;
     std::chrono::microseconds started;
 };
@@ -58,6 +105,7 @@ public:
 
     PerfMonitorOperation* start(PerformanceMetric metric, std::string const name,
                                        PerformanceStack* stack = nullptr);
+    PerfMonitorReport BuildReport(bool perTick = false, bool fullStack = false);
     void PrintStats(bool perTick = false, bool fullStack = false);
     void Reset();
 

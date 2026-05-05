@@ -327,6 +327,8 @@ public:
 
     uint32 commandServerPort;
     bool perfMonEnabled;
+    bool enableRpgHooks;
+    bool enablePerfHooks;
     bool summonWhenGroup;
     bool randomBotShowHelmet;
     bool randomBotShowCloak;

@@ -7,6 +7,7 @@
 #define _PLAYERBOT_PLAYERBOTrpghook_H
 
 #include <algorithm>
+#include <shared_mutex>
 #include <string>
 #include <vector>
 
@@ -79,17 +80,25 @@ public:
     void RegisterHook(IPlayerbotRpgHook* hook)
     {
         if (hook)
+        {
+            std::unique_lock<std::shared_mutex> guard(_hooksLock);
             _hooks.push_back(hook);
+        }
     }
 
     void UnregisterHook(IPlayerbotRpgHook* hook)
     {
+        std::unique_lock<std::shared_mutex> guard(_hooksLock);
         _hooks.erase(std::remove(_hooks.begin(), _hooks.end(), hook), _hooks.end());
     }
 
     /// Notify all hooks that a status change occurred.
     void NotifyStatusChanged(Player* bot, NewRpgStatus oldStatus, NewRpgStatus newStatus)
     {
+        if (!sPlayerbotAIConfig.enableRpgHooks)
+            return;
+
+        std::shared_lock<std::shared_mutex> guard(_hooksLock);
         for (IPlayerbotRpgHook* hook : _hooks)
             hook->OnRpgStatusChanged(bot, oldStatus, newStatus);
     }
@@ -98,6 +107,10 @@ public:
     /// Returns true if any hook consumed the update.
     bool NotifyStatusUpdate(Player* bot, NewRpgInfo& info)
     {
+        if (!sPlayerbotAIConfig.enableRpgHooks)
+            return false;
+
+        std::shared_lock<std::shared_mutex> guard(_hooksLock);
         for (IPlayerbotRpgHook* hook : _hooks)
         {
             if (hook->OnRpgStatusUpdate(bot, info))
@@ -111,6 +124,11 @@ public:
     std::vector<std::pair<IPlayerbotRpgHook*, RpgStatusCandidate>> CollectExtraCandidates(Player* bot)
     {
         std::vector<std::pair<IPlayerbotRpgHook*, RpgStatusCandidate>> result;
+
+        if (!sPlayerbotAIConfig.enableRpgHooks)
+            return result;
+
+        std::shared_lock<std::shared_mutex> guard(_hooksLock);
         for (IPlayerbotRpgHook* hook : _hooks)
         {
             for (RpgStatusCandidate& c : hook->GetExtraStatusCandidates(bot))
@@ -122,10 +140,18 @@ public:
     /// Dispatch ExecuteCustomStatus to the hook that owns the winning candidate.
     bool DispatchCustomStatus(Player* bot, NewRpgInfo& info, IPlayerbotRpgHook* owner, std::string const& tag)
     {
+        if (!sPlayerbotAIConfig.enableRpgHooks || !owner)
+            return false;
+
+        std::shared_lock<std::shared_mutex> guard(_hooksLock);
         return owner->ExecuteCustomStatus(bot, info, tag);
     }
 
-    std::vector<IPlayerbotRpgHook*> const& GetHooks() const { return _hooks; }
+    std::vector<IPlayerbotRpgHook*> GetHooks() const
+    {
+        std::shared_lock<std::shared_mutex> guard(_hooksLock);
+        return _hooks;
+    }
 
 private:
     PlayerbotRpgHookMgr() = default;
@@ -133,6 +159,7 @@ private:
     PlayerbotRpgHookMgr(PlayerbotRpgHookMgr const&) = delete;
     PlayerbotRpgHookMgr& operator=(PlayerbotRpgHookMgr const&) = delete;
 
+    mutable std::shared_mutex _hooksLock;
     std::vector<IPlayerbotRpgHook*> _hooks;
 };
 

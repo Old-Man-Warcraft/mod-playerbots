@@ -421,6 +421,8 @@ bool PlayerbotAIConfig::Initialize()
 
     commandServerPort = sConfigMgr->GetOption<int32>("AiPlayerbot.CommandServerPort", 8888);
     perfMonEnabled = sConfigMgr->GetOption<bool>("AiPlayerbot.PerfMonEnabled", false);
+    enableRpgHooks = sConfigMgr->GetOption<bool>("AiPlayerbot.EnableRpgHooks", false);
+    enablePerfHooks = sConfigMgr->GetOption<bool>("AiPlayerbot.EnablePerfHooks", false);
 
     useGroundMountAtMinLevel = sConfigMgr->GetOption<int32>("AiPlayerbot.UseGroundMountAtMinLevel", 20);
     useFastGroundMountAtMinLevel = sConfigMgr->GetOption<int32>("AiPlayerbot.UseFastGroundMountAtMinLevel", 40);

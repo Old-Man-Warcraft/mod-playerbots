@@ -45,6 +45,28 @@
 ///
 ///   // At module shutdown (e.g. WorldScript::OnShutdown):
 ///   sPlayerbotRpgHookMgr.UnregisterHook(&s_myHook);
+///
+/// 4. Read structured performance monitor data:
+///
+///   PerfMonitorReport report = sPerfMonitor.BuildReport(false, false);
+///   for (PerfMonitorReportRow const& row : report.rows)
+///   {
+///       // row.name, row.percentage, row.totalSeconds, row.averageMilliseconds
+///   }
+///
+/// 5. Observe live performance samples:
+///
+///   class MyPerfHook : public IPlayerbotPerfHook
+///   {
+///   public:
+///       void OnPerfMetricRecorded(PerfMetricRecord const& record) override
+///       {
+///           // inspect record.metric / record.name / record.elapsedUs
+///       }
+///   };
+///
+///   static MyPerfHook s_perfHook;
+///   sPlayerbotPerfHookMgr.RegisterHook(&s_perfHook);
 
 #ifndef _PLAYERBOT_API_H
 #define _PLAYERBOT_API_H
@@ -55,9 +77,13 @@
 
 // --- Hook / observer interface -----------------------------------------------
 #include "PlayerbotRpgHook.h"    // IPlayerbotRpgHook, PlayerbotRpgHookMgr, sPlayerbotRpgHookMgr
+#include "PlayerbotPerfHook.h"   // IPlayerbotPerfHook, PlayerbotPerfHookMgr, sPlayerbotPerfHookMgr
 
 // --- Bot access --------------------------------------------------------------
 #include "PlayerbotMgr.h"        // PlayerbotsMgr, sPlayerbotsMgr, GetPlayerbotAI()
 #include "PlayerbotAI.h"         // PlayerbotAI — rpgInfo, rpgStatistic, lowPriorityQuest
+
+// --- Performance monitor -----------------------------------------------------
+#include "PerfMonitor.h"         // PerfMonitor, PerfMonitorReport, PerfMetricRecord, sPerfMonitor
 
 #endif
