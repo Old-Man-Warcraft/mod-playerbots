@@ -66,6 +66,15 @@ private:
 std::unordered_set<ObjectGuid> BotInitGuard::botsBeingInitialized;
 std::unordered_map<ObjectGuid, uint32> PlayerbotHolder::botLoading;
 
+namespace
+{
+    void ScheduleBotSave(Player* bot)
+    {
+        if (bot)
+            bot->ScheduleDelayedOperation(DELAYED_SAVE_PLAYER);
+    }
+}
+
 PlayerbotHolder::PlayerbotHolder() : PlayerbotAIBase(false) {}
 class PlayerbotLoginQueryHolder : public LoginQueryHolder
 {
@@ -356,7 +365,7 @@ void PlayerbotHolder::LogoutPlayerBot(ObjectGuid guid)
         PlayerbotWorldThreadProcessor::instance().QueueOperation(std::move(cleanupOp));
 
         LOG_DEBUG("playerbots", "Bot {} logging out", bot->GetName().c_str());
-        bot->SaveToDB(false, false);
+        ScheduleBotSave(bot);
 
         WorldSession* botWorldSessionPtr = bot->GetSession();
         WorldSession* masterWorldSessionPtr = nullptr;
@@ -423,7 +432,7 @@ void PlayerbotHolder::DisablePlayerBot(ObjectGuid guid)
 
         LOG_DEBUG("playerbots", "Bot {} logged out", bot->GetName().c_str());
 
-        bot->SaveToDB(false, false);
+        ScheduleBotSave(bot);
 
         if (botAI->GetAiObjectContext())  // Maybe some day re-write to delate all pointer values.
         {
@@ -594,7 +603,7 @@ void PlayerbotHolder::OnBotLogin(Player* const bot)
         bot->RemovePlayerFlag(PLAYER_FLAGS_NO_XP_GAIN);
     }
 
-    bot->SaveToDB(false, false);
+    ScheduleBotSave(bot);
     bool addClassBot = sRandomPlayerbotMgr.IsAccountType(accountId, 2);
     if (addClassBot && master && abs((int)master->GetLevel() - (int)bot->GetLevel()) > 3)
     {
@@ -1598,7 +1607,7 @@ void PlayerbotMgr::SaveToDB()
     for (PlayerBotMap::const_iterator it = GetPlayerBotsBegin(); it != GetPlayerBotsEnd(); ++it)
     {
         Player* const bot = it->second;
-        bot->SaveToDB(false, false);
+        ScheduleBotSave(bot);
     }
 
     for (PlayerBotMap::const_iterator it = sRandomPlayerbotMgr.GetPlayerBotsBegin();
@@ -1606,7 +1615,7 @@ void PlayerbotMgr::SaveToDB()
     {
         Player* const bot = it->second;
         if (GET_PLAYERBOT_AI(bot) && GET_PLAYERBOT_AI(bot)->GetMaster() == GetMaster())
-            bot->SaveToDB(false, false);
+            ScheduleBotSave(bot);
     }
 }
 

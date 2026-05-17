@@ -6,6 +6,7 @@
 #ifndef _PLAYERBOT_PLAYERBOTAI_H
 #define _PLAYERBOT_PLAYERBOTAI_H
 
+#include <mutex>
 #include <stack>
 
 #include "Chat.h"
@@ -353,6 +354,7 @@ public:
 private:
     std::map<uint16, std::string> handlers;
     std::stack<WorldPacket> queue;
+    mutable std::mutex queueMutex;
 };
 
 class ChatCommandHolder

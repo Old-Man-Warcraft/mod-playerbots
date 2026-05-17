@@ -2295,14 +2295,7 @@ std::string RandomPlayerbotMgr::GetEventData(uint32 bot, std::string const& even
 uint32 RandomPlayerbotMgr::SetEventValue(uint32 bot, std::string const& event, uint32 value, uint32 validIn,
                                          std::string const& data)
 {
-    PlayerbotsDatabaseTransaction trans = PlayerbotsDatabase.BeginTransaction();
-
-    PlayerbotsDatabasePreparedStatement* stmt =
-        PlayerbotsDatabase.GetPreparedStatement(PLAYERBOTS_DEL_RANDOM_BOTS_BY_OWNER_AND_EVENT);
-    stmt->SetData(0, 0);
-    stmt->SetData(1, bot);
-    stmt->SetData(2, event.c_str());
-    trans->Append(stmt);
+    PlayerbotsDatabasePreparedStatement* stmt = nullptr;
 
     if (value)
     {
@@ -2319,10 +2312,16 @@ uint32 RandomPlayerbotMgr::SetEventValue(uint32 bot, std::string const& event, u
         else
             stmt->SetData(6);  // NULL
 
-        trans->Append(stmt);
+        PlayerbotsDatabase.Execute(stmt);
     }
-
-    PlayerbotsDatabase.CommitTransaction(trans);
+    else
+    {
+        stmt = PlayerbotsDatabase.GetPreparedStatement(PLAYERBOTS_DEL_RANDOM_BOTS_BY_OWNER_AND_EVENT);
+        stmt->SetData(0, 0);
+        stmt->SetData(1, bot);
+        stmt->SetData(2, event.c_str());
+        PlayerbotsDatabase.Execute(stmt);
+    }
 
     // Update in-memory cache
     BotEventCache& cache = eventCache[bot];

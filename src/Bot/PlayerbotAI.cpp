@@ -80,14 +80,28 @@ uint32 PlayerbotChatHandler::extractQuestId(std::string const str)
     return cId ? atol(cId) : 0;
 }
 
-void PacketHandlingHelper::AddHandler(uint16 opcode, std::string const handler) { handlers[opcode] = handler; }
+void PacketHandlingHelper::AddHandler(uint16 opcode, std::string const handler)
+{
+    std::lock_guard<std::mutex> lock(queueMutex);
+    handlers[opcode] = handler;
+}
 
 void PacketHandlingHelper::Handle(ExternalEventHelper& helper)
 {
-    while (!queue.empty())
+    std::stack<WorldPacket> packets;
+
     {
-        WorldPacket packet = queue.top();
-        queue.pop(); // remove first so handling can't modify the queue while we're using it
+        std::lock_guard<std::mutex> lock(queueMutex);
+        if (queue.empty())
+            return;
+
+        packets.swap(queue);
+    }
+
+    while (!packets.empty())
+    {
+        WorldPacket packet = packets.top();
+        packets.pop(); // remove first so handling can't modify the queue while we're using it
 
         helper.HandlePacket(handlers, packet);
     }
@@ -100,6 +114,7 @@ void PacketHandlingHelper::AddPacket(WorldPacket const& packet)
     // assert(handlers);
     // assert(packet);
     // assert(packet.GetOpcode());
+    std::lock_guard<std::mutex> lock(queueMutex);
     if (handlers.find(packet.GetOpcode()) != handlers.end())
         queue.push(WorldPacket(packet));
 }
