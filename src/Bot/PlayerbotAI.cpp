@@ -251,6 +251,16 @@ PlayerbotAI::~PlayerbotAI()
         PlayerbotsMgr::instance().RemovePlayerBotData(botGuid, true);
 }
 
+std::unique_lock<std::recursive_mutex> PlayerbotAI::AcquireAIStateLock()
+{
+    return std::unique_lock<std::recursive_mutex>(aiStateLock);
+}
+
+std::unique_lock<std::recursive_mutex> PlayerbotAI::TryAcquireAIStateLock()
+{
+    return std::unique_lock<std::recursive_mutex>(aiStateLock, std::try_to_lock);
+}
+
 void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
 {
     // Handle the AI check delay
@@ -263,6 +273,8 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
     if (!bot || !bot->GetSession() || !bot->IsInWorld() || bot->IsBeingTeleported() ||
         bot->GetSession()->isLogingOut() || bot->IsDuringRemoveFromWorld())
         return;
+
+    std::unique_lock<std::recursive_mutex> aiLock = AcquireAIStateLock();
 
     // Handle cheat options (set bot health and power if cheats are enabled)
     if (bot->IsAlive() &&

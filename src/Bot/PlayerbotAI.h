@@ -418,6 +418,8 @@ public:
     void ResetStrategies(bool load = false);
     void ReInitCurrentEngine();
     void Reset(bool full = false);
+    std::unique_lock<std::recursive_mutex> AcquireAIStateLock();
+    std::unique_lock<std::recursive_mutex> TryAcquireAIStateLock();
     void LeaveOrDisbandGroup();
     static bool IsTank(Player* player, bool bySpec = false);
     static bool IsHeal(Player* player, bool bySpec = false);
@@ -629,6 +631,7 @@ private:
                !player->IsBeingTeleported();
     }
 protected:
+    mutable std::recursive_mutex aiStateLock;
     Player* bot;
     Player* master;
     ObjectGuid botGuid;

@@ -696,10 +696,8 @@ uint32 RandomPlayerbotMgr::AddRandomBots()
 
         for (uint32 accountId : accountsToUse)
         {
-            CharacterDatabasePreparedStatement* stmt =
-                CharacterDatabase.GetPreparedStatement(CHAR_SEL_CHARS_BY_ACCOUNT_ID);
-            stmt->SetData(0, accountId);
-            PreparedQueryResult result = CharacterDatabase.Query(stmt);
+            QueryResult result = CharacterDatabase.Query(
+                "SELECT `guid`, `class`, `race` FROM `characters` WHERE `account` = {}", accountId);
             if (!result)
                 continue;
 
@@ -1579,6 +1577,17 @@ void RandomPlayerbotMgr::RandomTeleport(Player* bot, std::vector<WorldLocation>&
     if (bot->IsBeingTeleported() || !bot->IsInWorld())
         return;
 
+    PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
+    if (!botAI)
+        return;
+
+    std::unique_lock<std::recursive_mutex> aiLock = botAI->TryAcquireAIStateLock();
+    if (!aiLock.owns_lock())
+    {
+        LOG_DEBUG("playerbots", "Skipping random teleport for busy bot {}", bot->GetName().c_str());
+        return;
+    }
+
     // no teleport / movement update when rooted.
     if (bot->IsRooted())
         return;
@@ -1595,14 +1604,10 @@ void RandomPlayerbotMgr::RandomTeleport(Player* bot, std::vector<WorldLocation>&
     if (bot->GetGroup() && !bot->GetGroup()->IsLeader(bot->GetGUID()))
         return;
 
-    PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
-    if (botAI)
-    {
-        // ignore when in when taxi with boat/zeppelin and has players nearby
-        if (bot->HasUnitMovementFlag(MOVEMENTFLAG_ONTRANSPORT) && bot->HasUnitState(UNIT_STATE_IGNORE_PATHFINDING) &&
-            botAI->HasPlayerNearby())
-            return;
-    }
+    // ignore when in when taxi with boat/zeppelin and has players nearby
+    if (bot->HasUnitMovementFlag(MOVEMENTFLAG_ONTRANSPORT) && bot->HasUnitState(UNIT_STATE_IGNORE_PATHFINDING) &&
+        botAI->HasPlayerNearby())
+        return;
 
     // if (sPlayerbotAIConfig.randomBotRpgChance < 0)
     //     return;
@@ -1697,9 +1702,7 @@ void RandomPlayerbotMgr::RandomTeleport(Player* bot, std::vector<WorldLocation>&
         }
 
         bot->GetMotionMaster()->Clear();
-        PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
-        if (botAI)
-            botAI->Reset(true);
+        botAI->Reset(true);
         bot->RemoveAurasWithInterruptFlags(AURA_INTERRUPT_FLAG_TELEPORTED | AURA_INTERRUPT_FLAG_CHANGE_MAP);
         bot->TeleportTo(loc.GetMapId(), x, y, z, 0);
         bot->SendMovementFlagUpdate();
@@ -1887,6 +1890,13 @@ void RandomPlayerbotMgr::RandomizeFirst(Player* bot)
     if (!botAI)
         return;
 
+    std::unique_lock<std::recursive_mutex> aiLock = botAI->TryAcquireAIStateLock();
+    if (!aiLock.owns_lock())
+    {
+        LOG_DEBUG("playerbots", "Skipping first randomize for busy bot {}", bot->GetName().c_str());
+        return;
+    }
+
     uint32 maxLevel = sPlayerbotAIConfig.randomBotMaxLevel;
     if (maxLevel > sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL))
         maxLevel = sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL);
@@ -1982,6 +1992,13 @@ void RandomPlayerbotMgr::RandomizeMin(Player* bot)
     if (!botAI)
         return;
 
+    std::unique_lock<std::recursive_mutex> aiLock = botAI->TryAcquireAIStateLock();
+    if (!aiLock.owns_lock())
+    {
+        LOG_DEBUG("playerbots", "Skipping minimum randomize for busy bot {}", bot->GetName().c_str());
+        return;
+    }
+
     PerfMonitorOperation* pmo = sPerfMonitor.start(PERF_MON_RNDBOT, "RandomizeMin");
     uint32 level = sPlayerbotAIConfig.randomBotMinLevel;
     SetValue(bot, "level", level);
@@ -2055,6 +2072,13 @@ void RandomPlayerbotMgr::Refresh(Player* bot)
     PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
     if (!botAI)
         return;
+
+    std::unique_lock<std::recursive_mutex> aiLock = botAI->TryAcquireAIStateLock();
+    if (!aiLock.owns_lock())
+    {
+        LOG_DEBUG("playerbots", "Skipping refresh for busy bot {}", bot->GetName().c_str());
+        return;
+    }
 
     if (bot->isDead())
     {
