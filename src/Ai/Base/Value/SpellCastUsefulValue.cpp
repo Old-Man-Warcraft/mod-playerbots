@@ -53,11 +53,14 @@ bool SpellCastUsefulValue::Calculate()
     if (skipSpells.find(spellid) != skipSpells.end())
         return false;
 
+    if (!spellInfo->SpellName[0])
+        return true;
+
     std::string const spellName = spellInfo->SpellName[0];
     for (uint32 skipSpellId : skipSpells)
     {
         SpellInfo const* skipSpellInfo = sSpellMgr->GetSpellInfo(skipSpellId);
-        if (!skipSpellInfo)
+        if (!skipSpellInfo || !skipSpellInfo->SpellName[0])
             continue;
 
         std::wstring wnamepart;

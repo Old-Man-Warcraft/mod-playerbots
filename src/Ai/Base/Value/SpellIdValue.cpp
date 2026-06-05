@@ -22,7 +22,11 @@ uint32 SpellIdValue::Calculate()
     uint32 extractedSpellId = handler.extractSpellId(namepart);
     if (extractedSpellId)
         if (SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(extractedSpellId))
-            namepart = spellInfo->SpellName[0];
+            if (spellInfo->SpellName[0])
+                namepart = spellInfo->SpellName[0];
+
+    if (namepart.empty())
+        return 0;
 
     std::wstring wnamepart;
     if (!Utf8toWStr(namepart, wnamepart))
@@ -61,6 +65,9 @@ uint32 SpellIdValue::Calculate()
         }
 
         char const* spellName = spellInfo->SpellName[loc];
+        if (!spellName)
+            continue;
+
         if (!useByItem && (tolower(spellName[0]) != firstSymbol || strlen(spellName) != spellLength ||
                            !Utf8FitTo(spellName, wnamepart)))
             continue;
@@ -85,6 +92,9 @@ uint32 SpellIdValue::Calculate()
                 continue;
 
             char const* spellName = spellInfo->SpellName[loc];
+            if (!spellName)
+                continue;
+
             if (tolower(spellName[0]) != firstSymbol || strlen(spellName) != spellLength ||
                 !Utf8FitTo(spellName, wnamepart))
                 continue;
@@ -184,7 +194,11 @@ uint32 VehicleSpellIdValue::Calculate()
     uint32 extractedSpellId = handler.extractSpellId(namepart);
     if (extractedSpellId)
         if (SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(extractedSpellId))
-            namepart = spellInfo->SpellName[0];
+            if (spellInfo->SpellName[0])
+                namepart = spellInfo->SpellName[0];
+
+    if (namepart.empty())
+        return 0;
 
     std::wstring wnamepart;
     if (!Utf8toWStr(namepart, wnamepart))
@@ -208,6 +222,9 @@ uint32 VehicleSpellIdValue::Calculate()
             continue;
 
         char const* spellName = spellInfo->SpellName[loc];
+        if (!spellName)
+            continue;
+
         if (tolower(spellName[0]) != firstSymbol || strlen(spellName) != spellLength ||
             !Utf8FitTo(spellName, wnamepart))
             continue;
