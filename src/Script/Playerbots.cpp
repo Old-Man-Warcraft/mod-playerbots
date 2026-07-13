@@ -439,7 +439,7 @@ public:
 
     void OnPlayerbotPacketSent(Player* player, WorldPacket const* packet) override
     {
-        if (player == nullptr)
+        if (player == nullptr || player->IsDuringRemoveFromWorld())
             return;
 
         PlayerbotAI* botAI = PlayerbotsMgr::instance().GetPlayerbotAI(player);

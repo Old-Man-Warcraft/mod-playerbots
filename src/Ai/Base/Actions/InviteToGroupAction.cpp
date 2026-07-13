@@ -15,7 +15,7 @@
 
 bool InviteToGroupAction::Invite(Player* inviter, Player* player)
 {
-    if (!player)
+    if (!player || !player->IsInWorld())
         return false;
 
     if (inviter == player)
@@ -61,7 +61,8 @@ bool InviteNearbyToGroupAction::Execute(Event /*event*/)
         if (player->GetGroup())
             continue;
 
-        if (!PlayerbotAIConfig::instance().randomBotInvitePlayer && GET_PLAYERBOT_AI(player)->IsRealPlayer())
+        PlayerbotAI* playerBotAI = GET_PLAYERBOT_AI(player);
+        if (!PlayerbotAIConfig::instance().randomBotInvitePlayer && (!playerBotAI || playerBotAI->IsRealPlayer()))
             continue;
 
         Group* group = bot->GetGroup();
@@ -183,7 +184,8 @@ bool InviteGuildToGroupAction::Execute(Event /*event*/)
         if (player->isDND())
             continue;
 
-        if (!PlayerbotAIConfig::instance().randomBotInvitePlayer && GET_PLAYERBOT_AI(player)->IsRealPlayer())
+        PlayerbotAI* playerBotAI = GET_PLAYERBOT_AI(player);
+        if (!PlayerbotAIConfig::instance().randomBotInvitePlayer && (!playerBotAI || playerBotAI->IsRealPlayer()))
             continue;
 
         if (player->IsBeingTeleported())
@@ -195,7 +197,7 @@ bool InviteGuildToGroupAction::Execute(Event /*event*/)
         if (WorldPosition(player).distance(bot) > 1000 && player->GetLevel() < 15)
             continue;
 
-        PlayerbotAI* playerAi = GET_PLAYERBOT_AI(player);
+        PlayerbotAI* playerAi = playerBotAI;
 
         if (playerAi)
         {

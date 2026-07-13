@@ -398,7 +398,7 @@ WorldPosition NewRpgBaseAction::SelectAuctionHouseTravelPos()
         if (!creatureData)
             continue;
 
-        CreatureTemplate const* creatureInfo = sObjectMgr->GetCreatureTemplate(creatureData->id1);
+        CreatureTemplate const* creatureInfo = sObjectMgr->GetCreatureTemplate(creatureData->id);
         if (!creatureInfo)
             continue;
 
@@ -1555,7 +1555,7 @@ WorldPosition NewRpgBaseAction::SelectRandomFarmingPos() const
         if (creatureData.mapid != bot->GetMapId())
             continue;
 
-        CreatureTemplate const* creatureTemplate = sObjectMgr->GetCreatureTemplate(creatureData.id1);
+        CreatureTemplate const* creatureTemplate = sObjectMgr->GetCreatureTemplate(creatureData.id);
         if (!creatureTemplate || !IsHostileFactionForBot(bot, creatureTemplate->faction))
             continue;
 

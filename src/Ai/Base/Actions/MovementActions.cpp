@@ -1387,7 +1387,22 @@ bool MovementAction::Flee(Unit* target)
         }
     }
 
-    Unit* currentVictim = target->GetThreatMgr().GetCurrentVictim();
+    // Safely get current victim - only creatures have threat managers
+    Unit* currentVictim = nullptr;
+    Creature* targetCreature = target->ToCreature();
+    if (targetCreature && targetCreature->IsAlive() && targetCreature->IsInWorld())
+    {
+        try
+        {
+            currentVictim = targetCreature->GetThreatMgr().GetCurrentVictim();
+        }
+        catch (std::exception const& e)
+        {
+            LOG_WARN("playerbots", "MovementAction::Flee: Exception getting threat manager victim: {}", e.what());
+            return false;
+        }
+    }
+
     if (currentVictim && currentVictim == bot)  // bot is target - try to flee to tank or master
     {
         if (Group* group = bot->GetGroup())

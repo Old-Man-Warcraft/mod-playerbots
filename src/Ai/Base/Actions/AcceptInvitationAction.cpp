@@ -21,7 +21,23 @@ bool AcceptInvitationAction::Execute(Event event)
     WorldPacket packet = event.getPacket();
     uint8 flag;
     std::string name;
-    packet >> flag >> name;
+    
+    // Validate packet size before reading
+    if (packet.rpos() + 1 > packet.size())
+    {
+        LOG_WARN("playerbots", "AcceptInvitationAction: Malformed invitation packet (incomplete flag)");
+        return false;
+    }
+
+    try
+    {
+        packet >> flag >> name;
+    }
+    catch (ByteBufferException const& e)
+    {
+        LOG_WARN("playerbots", "AcceptInvitationAction: Failed to read invitation packet: {}", e.what());
+        return false;
+    }
 
     Player* inviter = ObjectAccessor::FindPlayer(grp->GetLeaderGUID());
     if (!inviter)
