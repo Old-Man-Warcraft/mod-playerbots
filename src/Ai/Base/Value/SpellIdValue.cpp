@@ -1,6 +1,7 @@
 /*
- * Copyright (C) 2016+ AzerothCore <www.azerothcore.org>, released under GNU AGPL v3 license, you may redistribute it
- * and/or modify it under version 3 of the License, or (at your option), any later version.
+ * This file is part of the mod-playerbots module for AzerothCore. See AUTHORS file for Copyright
+ * information; released under GNU GPL v2 license, redistribute/modify under version 2 of the License,
+ * or (at your option) any later version.
  */
 
 #include "SpellIdValue.h"
@@ -34,7 +35,7 @@ uint32 SpellIdValue::Calculate()
 
     wstrToLower(wnamepart);
     char firstSymbol = tolower(namepart[0]);
-    int spellLength = wnamepart.length();
+    size_t spellLength = wnamepart.length();
 
     LocaleConstant loc = LOCALE_enUS;
 
@@ -143,13 +144,13 @@ uint32 SpellIdValue::Calculate()
                 continue;
             }
 
-            if (!highestRank || id > highestRank)
+            if (!highestRank || (uint32)id > highestRank)
             {
                 highestRank = id;
                 highestSpellId = spellId;
             }
 
-            if (!lowestRank || (lowestRank && id < lowestRank))
+            if (!lowestRank || (lowestRank && (uint32)id < lowestRank))
             {
                 lowestRank = id;
                 lowestSpellId = spellId;
@@ -163,7 +164,7 @@ uint32 SpellIdValue::Calculate()
             auto spellId = *it;
             if (!highestSpellId)
                 highestSpellId = spellId;
-            if (saveMana == rank)
+            if (saveMana == (int32)rank)
                 return spellId;
             lowestSpellId = spellId;
             rank++;
@@ -206,7 +207,7 @@ uint32 VehicleSpellIdValue::Calculate()
 
     wstrToLower(wnamepart);
     char firstSymbol = tolower(namepart[0]);
-    int spellLength = wnamepart.length();
+    size_t spellLength = wnamepart.length();
 
     const int loc = LocaleConstant::LOCALE_enUS;
 
